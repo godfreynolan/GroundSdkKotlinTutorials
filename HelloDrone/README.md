@@ -1,4 +1,4 @@
-# Creating a Base Drone App
+# Creating a Base Hello Drone App
 
 The tutorial below demonstrates how to import the Parrot Ground SDK into a new Android project and implement basic video streaming and flight features (take off and land). Similar steps can be taken for integrating the SDK into an existing application.
 
