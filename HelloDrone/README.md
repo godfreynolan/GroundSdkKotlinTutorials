@@ -24,7 +24,7 @@ This application will demonstrate how to integrate the Parrot Android SDK into a
     * Set the **Application name** to your desired app name. In this example we will use "ImportSDKDemo".
     * The **Package name** is conventionally set to something like "com.companyName.applicationName". We will use "com.dji.importsdkdemo".
     * Set **Language** to Kotlin
-    * Set **Minimum SDK** to API 19: Android 4.4 (KitKat)
+    * Set **Minimum SDK** to API 21: Android 5.0 (Lollipop)
     * Do NOT check the option to "Use legacy android.support.libraries"
     * Click **Finish** to create the project.
 
@@ -124,6 +124,112 @@ rootProject.name='HelloDrone'
 ```
 
 Once you finished the steps above, click the "Sync Now" option that pops up. Alternatively, select **File -> Sync Project with Gradle Files** and wait for Gradle project sync to finish.
+
+### Implementing the Layout of the MainActivity
+
+Here we will implement the layout of the Main Actvitity. We will be using many built in components and views as well as custom ones from the Ground SDK.
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        xmlns:tools="http://schemas.android.com/tools"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        tools:context=".MainActivity">
+
+    <LinearLayout
+            android:id="@+id/info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal">
+
+            <TextView
+                    android:id="@+id/labelDroneControl"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:text="Drone"/>
+
+            <TextView
+                    android:id="@+id/droneStateTxt"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="2"
+                    android:text="state"
+                    android:textAlignment="center"/>
+
+            <TextView
+                    android:id="@+id/droneBatteryTxt"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:text=""
+                    android:textAlignment="textEnd"/>
+        </LinearLayout>
+
+        <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal">
+
+            <TextView
+                    android:id="@+id/labelRemoteControl"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:text="Remote"/>
+
+            <TextView
+                    android:id="@+id/rcStateTxt"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="2"
+                    android:text="state"
+                    android:textAlignment="center"/>
+
+            <TextView
+                    android:id="@+id/rcBatteryTxt"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:text=""
+                    android:textAlignment="textEnd"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <com.parrot.drone.groundsdk.stream.GsdkStreamView
+            android:id="@+id/stream_view"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            app:layout_constraintTop_toBottomOf="@id/info"
+            app:layout_constraintBottom_toTopOf="@id/takeOffLandBt"
+            tools:layout_editor_absoluteY="38dp">
+    </com.parrot.drone.groundsdk.stream.GsdkStreamView>
+
+    <Button
+        android:id="@+id/takeOffLandBt"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:enabled="false"
+        android:text="take off"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
+```
+
+Here, your final layout should look like this:
+<p align="center">
+   <img src="./images/activity_main_xml.png" width="40%" height="40%">
+</p>
 
 ### Working on the MainActivity
 
@@ -417,111 +523,624 @@ class MainActivity : AppCompatActivity() {
 }
 ```
 
-### Implementing the Layout of the MainActivity
+#### 1: Get the GroundSdk Session
 
-Here we will implement the layout of the Main Actvitity. We will be using many built in components and views as well as custom ones from the Ground SDK.
+In order to use GroundSdk in your application, you first have to `obtain a GroundSdk session` at the activity creation. So open your activity  file, and add:
 
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-        xmlns:app="http://schemas.android.com/apk/res-auto"
-        xmlns:tools="http://schemas.android.com/tools"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        tools:context=".MainActivity">
+```kotlin
+class MainActivity : AppCompatActivity() {
 
-    <LinearLayout
-            android:id="@+id/info"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            app:layout_constraintLeft_toLeftOf="parent"
-            app:layout_constraintRight_toRightOf="parent"
-            app:layout_constraintTop_toTopOf="parent">
+    /** GroundSdk instance. */
+    private lateinit var groundSdk: GroundSdk
 
-        <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="horizontal">
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        // Get a GroundSdk session.
+        groundSdk = ManagedGroundSdk.obtainSession(this)
+        // All references taken are linked to the activity lifecycle and
+        // automatically closed at its destruction.
+    }
 
-            <TextView
-                    android:id="@+id/labelDroneControl"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:text="Drone"/>
+    override fun onDestroy(savedInstanceState: Bundle?) {
+        super.onDestroy()
+    }
+}
+```
+This `GroundSdk session` keeps and manages all GroundSdk references, according to the Android Activity lifecycle.
 
-            <TextView
-                    android:id="@+id/droneStateTxt"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="2"
-                    android:text="state"
-                    android:textAlignment="center"/>
+#### 2: Connect to the Drone
 
-            <TextView
-                    android:id="@+id/droneBatteryTxt"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:text=""
-                    android:textAlignment="textEnd"/>
-        </LinearLayout>
+To connect to a drone, you should use the `AutoConnection` facility.
+At the Activity start, `get the facility` and `start it`.
 
-        <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="horizontal">
+```kotlin
+    override fun onStart() {
+    super.onStart()
 
-            <TextView
-                    android:id="@+id/labelRemoteControl"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:text="Remote"/>
-
-            <TextView
-                    android:id="@+id/rcStateTxt"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="2"
-                    android:text="state"
-                    android:textAlignment="center"/>
-
-            <TextView
-                    android:id="@+id/rcBatteryTxt"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:text=""
-                    android:textAlignment="textEnd"/>
-        </LinearLayout>
-    </LinearLayout>
-
-    <com.parrot.drone.groundsdk.stream.GsdkStreamView
-            android:id="@+id/stream_view"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            app:layout_constraintTop_toBottomOf="@id/info"
-            app:layout_constraintBottom_toTopOf="@id/takeOffLandBt"
-            tools:layout_editor_absoluteY="38dp">
-    </com.parrot.drone.groundsdk.stream.GsdkStreamView>
-
-    <Button
-        android:id="@+id/takeOffLandBt"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:enabled="false"
-        android:text="take off"
-        app:layout_constraintBottom_toBottomOf="parent" />
-
-</androidx.constraintlayout.widget.ConstraintLayout>
+        // Monitor the auto connection facility.
+        groundSdk.getFacility(AutoConnection::class.java) {
+            // Called when the auto connection facility is available and when it changes.
+    
+            it?.let {
+                // Start auto connection.
+                if (it.status != AutoConnection.Status.STARTED) {
+                    it.start()
+                }
+                // ...
+            }
+            // ...
+        }
+    }
 ```
 
-Here, your final layout should look like this:
-<p align="center">
-   <img src="./images/activity_main_xml.png" width="40%" height="40%">
-</p>
+Auto connection will automatically select and connect the device.
+
+You need to monitor the `drone` change to stop using the old one and start using the new one.
+
+```kotlin
+    // Drone:
+    /** Current drone instance. */
+    private var drone: Drone? = null
+
+    override fun onStart() {
+        super.onStart()
+
+        // Monitor the auto connection facility.
+        groundSdk.getFacility(AutoConnection::class.java) {
+            // Called when the auto connection facility is available and when it changes.
+
+            it?.let {
+                // ...
+                // If the drone has changed.
+                if (drone?.uid != it.drone?.uid) {
+                    if (drone != null) {
+                        // Stop monitoring the old drone.
+                        stopDroneMonitors()
+
+                        // Reset user interface drone part.
+                        resetDroneUi()
+                    }
+
+                    // Monitor the new drone.
+                    drone = it.drone
+                    if (drone != null) {
+                        startDroneMonitors()
+                    }
+                }// ...
+            }// ...
+        }
+    }
+
+    /**
+     * Starts drone monitors.
+     */
+    private fun startDroneMonitors() {
+        // Monitor drone state.
+        monitorDroneState()
+    
+        // Monitor drone battery level.
+        monitorDroneBatteryLevel()
+    
+        // Monitor piloting interface.
+        monitorPilotingInterface()
+    
+        // Start video stream.
+        startVideoStream()
+    }
+    
+    /**
+     * Stops drone monitors.
+     */
+    private fun stopDroneMonitors() {
+        // Close all references linked to the current drone to stop their monitoring.
+    
+        droneStateRef?.close()
+        droneStateRef = null
+    
+        droneBatteryInfoRef?.close()
+        droneBatteryInfoRef = null
+    
+        pilotingItfRef?.close()
+        pilotingItfRef = null
+    
+        liveStreamRef?.close()
+        liveStreamRef = null
+    
+        streamServerRef?.close()
+        streamServerRef = null
+    
+        liveStream = null
+    }
+```
+
+#### 3: Drone Monitoring
+
+##### 3.1: Drone User Interface
+
+Now you will monitor and display the drone connection state and its battery
+state. Initialize this new text views in your activity.
+
+```kotlin
+    // User Interface:
+    /** Video stream view. */
+    private lateinit var streamView: GsdkStreamView
+    /** Drone state text view. */
+    private lateinit var droneStateTxt: TextView
+    /** Drone battery level text view. */
+    private lateinit var droneBatteryTxt: TextView
+    /** Remote state level text view. */
+    private lateinit var rcStateTxt: TextView
+    /** Remote battery level text view. */
+    private lateinit var rcBatteryTxt: TextView
+    /** Take off / land button. */
+    private lateinit var takeOffLandBt: Button
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+    
+        // Get user interface instances.
+        streamView = findViewById(R.id.stream_view)
+        droneStateTxt = findViewById(R.id.droneStateTxt)
+        droneBatteryTxt = findViewById(R.id.droneBatteryTxt)
+        rcStateTxt = findViewById(R.id.rcStateTxt)
+        rcBatteryTxt = findViewById(R.id.rcBatteryTxt)
+        takeOffLandBt = findViewById(R.id.takeOffLandBt)
+        takeOffLandBt.setOnClickListener {onTakeOffLandClick()}
+    
+        // Initialize user interface default values.
+        droneStateTxt.text = DeviceState.ConnectionState.DISCONNECTED.toString()
+        rcStateTxt.text = DeviceState.ConnectionState.DISCONNECTED.toString()
+    
+        // Get a GroundSdk session.
+        groundSdk = ManagedGroundSdk.obtainSession(this)
+        // All references taken are linked to the activity lifecycle and
+        // automatically closed at its destruction.
+    }
+```
+##### 3.2 : Drone State Monitoring
+
+In order to display the drone connection state, set an observer on the `drone state`, and get its `ConnectionState`.
+
+When you have finished with it and you want to stop monitoring it, `close` the drone state reference.
+
+```kotlin
+    /** Reference to the current drone state. */
+    private var droneStateRef: Ref<DeviceState>? = null
+
+    /**
+     * Starts drone monitors.
+     */
+    private fun startDroneMonitors() {
+        // Monitor drone state.
+        monitorDroneState()
+        // ...
+    }
+
+    /**
+     * Stops drone monitors.
+     */
+    private fun stopDroneMonitors() {
+        // Close all references linked to the current drone to stop their monitoring.
+        droneStateRef?.close()
+        droneStateRef = null
+        //...
+    }
+
+    /**
+     * Monitor current drone state.
+     */
+    private fun monitorDroneState() {
+        // Monitor current drone state.
+        droneStateRef = drone?.getState {
+            // Called at each drone state update.
+    
+            it?.let {
+                // Update drone connection state view.
+                droneStateTxt.text = it.connectionState.toString()
+            }
+        }
+    }
+```
+##### 3.3: Drone Battery Monitoring
+
+In order to display the drone battery level, monitor the drone `battery info instrument`, using `getInstrument`, then get its `batteryLevel`.
+
+```kotlin
+    /** Reference to the current drone battery info instrument. */
+    private var droneBatteryInfoRef: Ref<BatteryInfo>? = null
+    /**
+     * Starts drone monitors.
+     */
+    private fun startDroneMonitors() {
+        // ...
+        // Monitor drone battery level.
+        monitorDroneBatteryLevel()
+        // ...
+    }
+    /**
+     * Stops drone monitors.
+     */
+    private fun stopDroneMonitors() {
+        // ...
+        droneBatteryInfoRef?.close()
+        droneBatteryInfoRef = null
+        // ...
+    }
+
+    /**
+     * Monitors current drone battery level.
+     */
+    private fun monitorDroneBatteryLevel() {
+        // Monitor the battery info instrument.
+        droneBatteryInfoRef = drone?.getInstrument(BatteryInfo::class.java) {
+            // Called when the battery info instrument is available and when it changes.
+    
+            it?.let {
+                // Update drone battery level view.
+                droneBatteryTxt.text = getString(R.string.percentage, it.batteryLevel)
+            }
+        }
+    }
+```
+
+##### 3.4: Reset Drone User Interface
+
+When you stop monitoring a drone, you have to reset the drone user interface
+to prevent garbage display.
+
+```kotlin
+    override fun onStart() {
+    super.onStart()
+
+        groundSdk.getFacility(AutoConnection::class.java) {
+            it?.let {
+                // ...
+    
+                // If the drone has changed.
+                if (drone?.uid != it.drone?.uid) {
+                    if (drone != null) {
+                        // Stop monitoring the old drone.
+                        stopDroneMonitors()
+    
+                        // Reset user interface drone part.
+                        resetDroneUi()
+                    }
+    
+                    // Monitor the new drone.
+                    drone = it.drone
+                    if (drone != null) {
+                        startDroneMonitors()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Resets drone user interface part.
+     */
+    private fun resetDroneUi() {
+        // Reset drone user interface views.
+        droneStateTxt.text = DeviceState.ConnectionState.DISCONNECTED.toString()
+        droneBatteryTxt.text = ""
+        takeOffLandBt.isEnabled = false
+        // Stop rendering the stream
+        streamView.setStream(null)
+    }
+```
+
+##### 3.5: Take off/Land Listener
+
+```kotlin
+    /**
+     * Called on take off/land button click.
+     */
+    private fun onTakeOffLandClick() {
+        // Get the piloting interface from its reference.
+        pilotingItfRef?.get()?.let { itf ->
+            // Do the action according to the interface capabilities
+            if (itf.canTakeOff()) {
+                // Take off
+                itf.takeOff()
+            } else if (itf.canLand()) {
+                // Land
+                itf.land()
+            }
+        }
+    }
+```
+
+##### 3.6: Manual Piloting Monitor
+
+In order to pilot the drone, you have to use the `Manual Copter Piloting Interface`.
+
+Monitor it using `getPilotingItf`, and update the button view according to the availability of these actions(`canTakeOff` / `canLand`).
+
+```kotlin
+    /** Reference to a current drone piloting interface. */
+    private var pilotingItfRef: Ref<ManualCopterPilotingItf>? = null
+
+    /**
+     * Starts drone monitors.
+     */
+    private fun startDroneMonitors() {
+        // ...
+        // Monitor piloting interface.
+        monitorPilotingInterface()
+        // ...
+    }
+
+    /**
+     * Stops drone monitors.
+     */
+    private fun stopDroneMonitors() {
+        // ...
+        pilotingItfRef?.close()
+        pilotingItfRef = null
+        // ...
+    }
+    
+    /**
+     * Monitors current drone piloting interface.
+     */
+    private fun monitorPilotingInterface() {
+        // Monitor a piloting interface.
+        pilotingItfRef = drone?.getPilotingItf(ManualCopterPilotingItf::class.java) {
+            // Called when the manual copter piloting Interface is available
+            // and when it changes.
+    
+            // Disable the button if the piloting interface is not available.
+            if (it == null) {
+                takeOffLandBt.isEnabled = false
+            } else {
+                managePilotingItfState(it)
+            }
+        }
+    }
+    
+    /**
+     * Manage piloting interface state.
+     *
+     * @param itf the piloting interface
+     */
+    private fun managePilotingItfState(itf: ManualCopterPilotingItf) {
+        when(itf.state) {
+            Activable.State.UNAVAILABLE -> {
+                // Piloting interface is unavailable.
+                takeOffLandBt.isEnabled = false
+            }
+    
+            Activable.State.IDLE -> {
+                // Piloting interface is idle.
+                takeOffLandBt.isEnabled = false
+    
+                // Activate the interface.
+                itf.activate()
+            }
+    
+            Activable.State.ACTIVE -> {
+                // Piloting interface is active.
+    
+                when {
+                    itf.canTakeOff() -> {
+                        // Drone can take off.
+                        takeOffLandBt.isEnabled = true
+                        takeOffLandBt.text = getString(R.string.take_off)
+                    }
+                    itf.canLand() -> {
+                        // Drone can land.
+                        takeOffLandBt.isEnabled = true
+                        takeOffLandBt.text = getString(R.string.land)
+                    }
+                    else -> // Disable the button.
+                        takeOffLandBt.isEnabled = false
+                }
+            }
+        }
+    }
+```
+
+##### 3.7: Take Off / Landing Requests
+
+Now you need to `take off` or `land` the drone when the button is clicked, according to their availabilities.
+```kotlin
+    /**
+     * Called on take off/land button click.
+     */
+    private fun onTakeOffLandClick() {
+        // Get the piloting interface from its reference.
+        pilotingItfRef?.get()?.let { itf ->
+            // Do the action according to the interface capabilities
+            if (itf.canTakeOff()) {
+                // Take off
+                itf.takeOff()
+            } else if (itf.canLand()) {
+                // Land
+                itf.land()
+            }
+        }
+    }
+```
+
+#### 4: Video Stream
+
+The next step will allow you to add a live stream video view.
+
+In order to display the live video stream in the GsdkStreamView, you need to:
+
+- Monitor the `stream server peripheral`
+- `Monitor its live stream`
+- `Start to play` the stream
+- `Attach this stream to your GsdkStreamView`
+- Detach the stream from the GsdkStreamView when you want to stop rendering the
+  stream
+
+```kotlin
+    /** Reference to the current drone stream server Peripheral. */
+    private var streamServerRef: Ref<StreamServer>? = null
+    /** Reference to the current drone live stream. */
+    private var liveStreamRef: Ref<CameraLive>? = null
+    /** Current drone live stream. */
+    private var liveStream: CameraLive? = null
+
+    /**
+     * Resets drone user interface part.
+     */
+    private fun resetDroneUi() {
+        // ...
+        // Stop rendering the stream
+        streamView.setStream(null)
+    }
+    
+    /**
+     * Starts drone monitors.
+     */
+    private fun startDroneMonitors() {
+        // ...
+        // Start video stream.
+        startVideoStream()
+    }
+    
+    /**
+     * Stops drone monitors.
+     */
+    private fun stopDroneMonitors() {
+        // ...
+        liveStreamRef?.close()
+        liveStreamRef = null
+    
+        streamServerRef?.close()
+        streamServerRef = null
+    
+        liveStream = null
+    }
+```
+
+#### 5: Remote Control
+
+In this section you will see how to connect to a remote control, display its connection state and battery level.
+
+##### 5.1: Remote Control Connection
+
+You can use the `auto connection facility` as with the drone, and get the `remote control` from it.
+
+```kotlin
+    // Remote control:
+    /** Current remote control instance. */
+    private var rc: RemoteControl? = null
+    /** Reference to the current remote control state. */
+    private var rcStateRef: Ref<DeviceState>? = null
+    /** Reference to the current remote control battery info instrument. */
+    private var rcBatteryInfoRef: Ref<BatteryInfo>? = null
+
+    override fun onStart() {
+        super.onStart()
+        // Monitor the auto connection facility.
+        groundSdk.getFacility(AutoConnection::class.java) {
+            // Called when the auto connection facility is available and when it changes.
+            it?.let{
+                // ...
+                // If the remote control has changed.
+                if (rc?.uid  != it.remoteControl?.uid) {
+                    if(rc != null) {
+                        // Stop monitoring the old remote.
+                        stopRcMonitors()
+    
+                        // Reset user interface Remote part.
+                        resetRcUi()
+                    }
+                    // Monitor the new remote.
+                    rc = it.remoteControl
+                    if(rc != null) {
+                        startRcMonitors()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Resets remote user interface part.
+     */
+    private fun resetRcUi() {
+        // Reset remote control user interface views.
+        rcStateTxt.text = DeviceState.ConnectionState.DISCONNECTED.toString()
+        rcBatteryTxt.text = ""
+    }
+    
+    /**
+     * Starts remote control monitors.
+     */
+    private fun startRcMonitors() {
+        // Monitor remote state
+        monitorRcState()
+    
+        // Monitor remote battery level
+        monitorRcBatteryLevel()
+    }
+    
+    /**
+     * Stops remote control monitors.
+     */
+    private fun stopRcMonitors() {
+        // Close all references linked to the current remote to stop their monitoring.
+    
+        rcStateRef?.close()
+        rcStateRef = null
+    
+        rcBatteryInfoRef?.close()
+        rcBatteryInfoRef = null
+    }
+```
+##### 5.2: Remote Control State and Battery
+
+As with the drone, set an observer on the `remote control state` to display its `connectionState`.
+
+Then monitor the `battery info instrument`, using `getInstrument` and display its `batteryLevel`.
+
+Finally, `close` the remote control references to stop monitoring them.
+
+```kotlin
+    // Remote control:
+    /** Current remote control instance. */
+    private var rc: RemoteControl? = null
+    /** Reference to the current remote control state. */
+    private var rcStateRef: Ref<DeviceState>? = null
+    /** Reference to the current remote control battery info instrument. */
+    private var rcBatteryInfoRef: Ref<BatteryInfo>? = null
+
+    /**
+     * Monitor current remote control state.
+     */
+    private fun monitorRcState() {
+        // Monitor current drone state.
+        rcStateRef = rc?.getState {
+            // Called at each remote state update.
+    
+            it?.let {
+                // Update remote connection state view.
+                rcStateTxt.text = it.connectionState.toString()
+            }
+        }
+    }
+    
+    /**
+     * Monitors current remote control battery level.
+     */
+    private fun monitorRcBatteryLevel() {
+        // Monitor the battery info instrument.
+        rcBatteryInfoRef = rc?.getInstrument(BatteryInfo::class.java) {
+            // Called when the battery info instrument is available and when it changes.
+    
+            it?.let {
+                // Update drone battery level view.
+                rcBatteryTxt.text = getString(R.string.percentage, it.batteryLevel)
+            }
+        }
+    }
+```
 
 ### Modifying AndroidManifest file
 
@@ -554,3 +1173,7 @@ Once you finished the steps above, let's open the "AndroidManifest.xml" file and
 The HelloDrone project can now be run. You can download the sample code of this project from this Github repository.
 
 If the App Key was generated correctly and the mobile device has internet connectivity, then the following should be seen:
+
+<p "center">
+  <img src="./images/final_app.jpg">
+ </p>
