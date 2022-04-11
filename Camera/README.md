@@ -1,27 +1,18 @@
 
 # Creating a Camera Application
-## DJI LAB 3 TUTORIAL KOTLIN
+## PARROT GROUND SDK LAB 2 TUTORIAL KOTLIN
 
 ***`WARNING: THIS TUTORIAL ASSUMES YOU'VE COMPLETED THE PREVIOUS TUTORIALS`***
 
-This tutorial is designed for you to gain a basic understanding of the DJI Mobile SDK. It will implement the FPV view and two basic camera functionalities: Take Photo and Record video.
+This tutorial is designed for you to gain a basic understanding of the Parrot Ground Sdk. It will implement the FPV view and two basic camera functionalities: Take Photo and Record video.
 
-You can download the tutorial's final sample project from this [Github Page](https://github.com/riisinterns/drone-lab-three-camera-demo).
-
----
-### Application Activation and Aircraft Binding in China
-
-For DJI SDK mobile application used in China, it's required to activate the application and bind the aircraft to the user's DJI account.
-
-If an application is not activated, the aircraft not bound (if required), or a legacy version of the SDK (< 4.1) is being used, all **camera live streams** will be disabled, and flight will be limited to a zone of 100m diameter and 30m height to ensure the aircraft stays within line of sight.
-
-To learn how to implement this feature, please check this tutorial [Application Activation and Aircraft Binding](https://developer.dji.com/mobile-sdk/documentation/android-tutorials/ActivationAndBinding.html).
+You can download the tutorial's final sample project from this [Github Page](https://github.com/riisinterns/GroundSdkKotlinTutorials).
 
 ---
 ### Preparation
 Throughout this tutorial we will be using Android Studio Bumblebee | 2021.1.1. You can download the latest version of Android Studio from here: http://developer.android.com/sdk/index.html.
 
-> Note: In this tutorial, we will use Mavic Mini for testing. However, most other DJI drone models should be capable of working with this code. It is recommended to use the latest version of Android Studio for using this application.
+> Note: In this tutorial, we will use the Sphinx Simulator for testing. However, a physical parrot drone should be capable of working with this code. It is recommended to use the latest version of Android Studio for using this application.
 
 ---
 ### Setting up the Application
@@ -35,994 +26,1540 @@ Throughout this tutorial we will be using Android Studio Bumblebee | 2021.1.1. Y
     *   Set the template to **"Empty Activity"** and then press **"Next"**.
 
 *   On the next screen:
-    * Set the **Application name** to your desired app name. In this example we will use `DJIFPV-Kotlin`.
-    * The **Package name** is conventionally set to something like "com.companyName.applicationName". We will use `com.riis.fpv`.
+    * Set the **Application name** to your desired app name. In this example we will use `Camera`.
+    * The **Package name** is conventionally set to something like "com.companyName.applicationName". We will use `com.parrot.camera`.
     * Set **Language** to Kotlin
-    * Set **Minimum SDK** to `API 21: Android 5.0 (Lollipop)`
+    * Set **Minimum SDK** to `API 24: Android 7.0 (Nougat)`
     * Do **NOT** check the option to "Use legacy android.support.libraries"
     * Click **Finish** to create the project.
 
-#### 2. Import Maven Dependency
-In our previous tutorial, [Importing and Activating DJI SDK](https://github.com/riisinterns/drone-lab-two-import-and-activate-sdk-in-android-studio) in Android Studio Project, you have learned how to import the Android SDK Maven Dependency and activate your application. If you haven't read that previously, please take a look at it and implement the related features. Once you've done that, continue to implement the next features.
+#### 2. Import Dependencies for Ground Sdk
+
+In the Module gradle for the project, implement the following dependency:
+
+```gradle
+    // GroundSdk dependencies
+    implementation 'com.parrot.drone.groundsdk:groundsdk:7.0.+'
+    runtimeOnly 'com.parrot.drone.groundsdk:arsdkengine:7.0.+'
+```
 
 ---
-### Building the Layouts of Activity
+### Implementing the MainActivity Class
 
-#### 1. Creating the MApplication Class
-
-In the project file navigator, go to **app -> java -> com -> riis -> fpv**, and right-click on the fpv directory. Select **New -> Kotlin Class** to create a new kotlin class and name it as `MApplication.kt`.
-
-Then, open the `MApplication.kt` file and replace the content with the following:
-
-```kotlin
-package com.riis.kotlin_mediamanagerdemo
-
-import android.app.Application
-import android.content.Context
-import com.secneo.sdk.Helper
-
-class MApplication: Application() {
-
-    override fun attachBaseContext(base: Context?) {
-        super.attachBaseContext(base)
-        Helper.install(this)
-    }
-}
-```
-Here we override the `attachBaseContext()` method to invoke the `install()` method of `Helper` class to load the SDK classes before using any SDK functionality. Failing to do so will result in unexpected crashes.
-
-#### 2.  Implementing the MainActivity Class
-
-The MainActivity.kt file is created by Android Studio by default. Let's replace its code with the following:
-
-```kotlin
-package com.riis.fpv
-
-import android.graphics.SurfaceTexture
-import android.os.Bundle
-import android.view.TextureView
-import android.view.View
-import android.widget.Button
-import android.widget.TextView
-import android.widget.Toast
-import android.widget.ToggleButton
-import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import dji.common.camera.SettingsDefinitions.CameraMode
-import dji.common.camera.SettingsDefinitions.ShootPhotoMode
-import dji.common.product.Model
-import dji.sdk.base.BaseProduct
-import dji.sdk.camera.Camera
-import dji.sdk.camera.VideoFeeder
-import dji.sdk.codec.DJICodecManager
-import dji.sdk.products.Aircraft
-import dji.sdk.products.HandHeld
-import dji.sdk.sdkmanager.DJISDKManager
-import kotlinx.coroutines.launch
-
-/*
-This activity provides an interface to access a connected DJI Product's camera and use
-it to take photos and record videos
-*/
-class MainActivity : AppCompatActivity(), TextureView.SurfaceTextureListener, View.OnClickListener {
-
-    //Class Variables
-    private val TAG = MainActivity::class.java.name
-
-    //listener that is used to receive video data coming from the connected DJI product
-    private var receivedVideoDataListener: VideoFeeder.VideoDataListener? = null
-    private var codecManager: DJICodecManager? = null //handles the encoding and decoding of video data
-
-    private lateinit var videoSurface: TextureView //Used to display the DJI product's camera video stream
-    private lateinit var captureBtn: Button
-    private lateinit var shootPhotoModeBtn: Button
-    private lateinit var recordVideoModeBtn: Button
-    private lateinit var recordBtn: ToggleButton
-    private lateinit var recordingTime: TextView
-
-
-    //Creating the Activity
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        setContentView(R.layout.activity_main) //inflating the activity_main.xml layout as the activity's view
-        initUi() //initializing the UI
-
-        /*
-        The receivedVideoDataListener receives the raw video data and the size of the data from the DJI product.
-        It then sends this data to the codec manager for decoding.
-        */
-        receivedVideoDataListener = VideoFeeder.VideoDataListener { videoBuffer, size ->
-            codecManager?.sendDataToDecoder(videoBuffer, size)
-        }
-
-        /*
-        NOTES:
-        - getCameraInstance() is used to get an instance of the camera running on the DJI product as
-          a Camera class object.
-
-         - SystemState is a subclass of Camera that provides general information and current status of the camera.
-
-         - Whenever a change in the camera's SystemState occurs, SystemState.Callback is an interface that
-           asynchronously updates the camera's SystemState.
-
-         - setSystemStateCallback is a method of the Camera class which allows us to define what else happens during
-           the systemState callback. In this case, we update the UI on the UI thread whenever the SystemState shows
-           that the camera is video recording.
-        */
-
-        getCameraInstance()?.let { camera ->
-            camera.setSystemStateCallback {
-                it.let { systemState ->
-                    //Getting elapsed video recording time in minutes and seconds, then converting into a time string
-                    val recordTime = systemState.currentVideoRecordingTimeInSeconds
-                    val minutes = (recordTime % 3600) / 60
-                    val seconds = recordTime % 60
-                    val timeString = String.format("%02d:%02d", minutes, seconds)
-
-                    //Accessing the UI thread to update the activity's UI
-                    runOnUiThread {
-                        //If the camera is video recording, display the time string on the recordingTime TextView
-                        recordingTime.text = timeString
-                        if (systemState.isRecording) {
-                            recordingTime.visibility = View.VISIBLE
-
-                        } else {
-                            recordingTime.visibility = View.INVISIBLE
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    //Function to initialize the activity's UI elements
-    private fun initUi() {
-        //referencing the layout views using their resource ids
-        videoSurface = findViewById(R.id.video_previewer_surface)
-        recordingTime = findViewById(R.id.timer)
-        captureBtn = findViewById(R.id.btn_capture)
-        recordBtn = findViewById(R.id.btn_record)
-        shootPhotoModeBtn = findViewById(R.id.btn_shoot_photo_mode)
-        recordVideoModeBtn = findViewById(R.id.btn_record_video_mode)
-
-        /*
-        Giving videoSurface a listener that checks for when a surface texture is available.
-        The videoSurface will then display the surface texture, which in this case is a camera video stream.
-        */
-        videoSurface.surfaceTextureListener = this
-
-        //Giving the non-toggle button elements a click listener
-        captureBtn.setOnClickListener(this)
-        shootPhotoModeBtn.setOnClickListener(this)
-        recordVideoModeBtn.setOnClickListener(this)
-
-        recordingTime.visibility = View.INVISIBLE
-
-        /*
-        recordBtn is a ToggleButton that when checked, the DJI product's camera starts video recording.
-        When unchecked, the camera stops video recording.
-        */
-        recordBtn.setOnCheckedChangeListener { buttonView, isChecked ->
-            if (isChecked) {
-                startRecord()
-            } else {
-                stopRecord()
-            }
-        }
-    }
-
-    //Function to make the DJI drone's camera start video recording
-    private fun startRecord() {
-        val camera = getCameraInstance() ?:return //get camera instance or null if it doesn't exist
-
-        /*
-        starts the camera video recording and receives a callback. If the callback returns an error that
-        is null, the operation is successful.
-        */
-        camera.startRecordVideo {
-            if (it == null) {
-                showToast("Record Video: Success")
-            } else {
-                showToast("Record Video Error: ${it.description}")
-            }
-        }
-    }
-
-    //Function to make the DJI product's camera stop video recording
-    private fun stopRecord() {
-        val camera = getCameraInstance() ?: return //get camera instance or null if it doesn't exist
-
-        /*
-        stops the camera video recording and receives a callback. If the callback returns an error that
-        is null, the operation is successful.
-        */
-        camera.stopRecordVideo {
-            if (it == null) {
-                showToast("Stop Recording: Success")
-            } else {
-                showToast("Stop Recording: Error ${it.description}")
-            }
-        }
-    }
-
-    //Function that initializes the display for the videoSurface TextureView
-    private fun initPreviewer() {
-
-        //gets an instance of the connected DJI product (null if nonexistent)
-        val product: BaseProduct = getProductInstance() ?: return
-
-        //if DJI product is disconnected, alert the user
-        if (!product.isConnected) {
-            showToast(getString(R.string.disconnected))
-        } else {
-            /*
-            if the DJI product is connected and the aircraft model is not unknown, add the
-            receivedVideoDataListener to the primary video feed.
-            */
-            videoSurface.surfaceTextureListener = this
-            if (product.model != Model.UNKNOWN_AIRCRAFT) {
-                receivedVideoDataListener?.let {
-                    VideoFeeder.getInstance().primaryVideoFeed.addVideoDataListener(
-                        it
-                    )
-                }
-            }
-        }
-    }
-
-    //Function that uninitializes the display for the videoSurface TextureView
-    private fun uninitPreviewer() {
-        val camera: Camera = getCameraInstance() ?: return
-    }
-
-    //Function that displays toast messages to the user
-    private fun showToast(msg: String?) {
-        runOnUiThread { Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show() }
-    }
-
-    //When the MainActivity is created or resumed, initialize the video feed display
-    override fun onResume() {
-        super.onResume()
-        initPreviewer()
-    }
-
-    //When the MainActivity is paused, clear the video feed display
-    override fun onPause() {
-        uninitPreviewer()
-        super.onPause()
-    }
-
-    //When the MainActivity is destroyed, clear the video feed display
-    override fun onDestroy() {
-        uninitPreviewer()
-        super.onDestroy()
-    }
-
-    //When a TextureView's SurfaceTexture is ready for use, use it to initialize the codecManager
-    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
-        if (codecManager == null) {
-            codecManager = DJICodecManager(this, surface, width, height)
-        }
-    }
-
-    //when a SurfaceTexture's size changes...
-    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
-
-    //when a SurfaceTexture is about to be destroyed, uninitialize the codedManager
-    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-        codecManager?.cleanSurface()
-        codecManager = null
-        return false
-    }
-
-    //When a SurfaceTexture is updated...
-    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
-
-    //Handling what happens when certain layout views are clicked
-    override fun onClick(v: View?) {
-        when(v?.id) {
-            //If the capture button is pressed, take a photo with the DJI product's camera
-            R.id.btn_capture -> {
-                captureAction()
-            }
-            //If the shoot photo mode button is pressed, set camera to only take photos
-            R.id.btn_shoot_photo_mode -> {
-                switchCameraMode(CameraMode.SHOOT_PHOTO)
-            }
-            //If the record video mode button is pressed, set camera to only record videos
-            R.id.btn_record_video_mode -> {
-                switchCameraMode(CameraMode.RECORD_VIDEO)
-            }
-            else -> {}
-        }
-    }
-
-    //Function for taking a a single photo using the DJI Product's camera
-    private fun captureAction() {
-        val camera: Camera = getCameraInstance() ?: return
-
-        /*
-        Setting the camera capture mode to SINGLE, and then taking a photo using the camera.
-        If the resulting callback for each operation returns an error that is null, then the
-        two operations are successful.
-        */
-        val photoMode = ShootPhotoMode.SINGLE
-        camera.setShootPhotoMode(photoMode) { djiError ->
-            if (djiError == null) {
-                lifecycleScope.launch {
-                    camera.startShootPhoto { djiErrorSecond ->
-                        if (djiErrorSecond == null) {
-                            showToast("take photo: success")
-                        } else {
-                            showToast("Take Photo Failure: ${djiError?.description}")
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /*
-    Function for setting the camera mode. If the resulting callback returns an error that
-    is null, then the operation was successful.
-    */
-    private fun switchCameraMode(cameraMode: CameraMode) {
-        val camera: Camera = getCameraInstance() ?: return
-
-        camera.setMode(cameraMode) { error ->
-            if (error == null) {
-                showToast("Switch Camera Mode Succeeded")
-            } else {
-                showToast("Switch Camera Error: ${error.description}")
-            }
-        }
-
-    }
-    
-    /*
-    Note: 
-    Depending on the DJI product, the mobile device is either connected directly to the drone,
-    or it is connected to a remote controller (RC) which is then used to control the drone.
-    */
-
-    //Function used to get the DJI product that is directly connected to the mobile device
-    private fun getProductInstance(): BaseProduct? {
-        return DJISDKManager.getInstance().product
-    }
-
-    /*
-    Function used to get an instance of the camera in use from the DJI product
-    */
-    private fun getCameraInstance(): Camera? {
-        if (getProductInstance() == null) return null
-
-        return when {
-            getProductInstance() is Aircraft -> {
-                (getProductInstance() as Aircraft).camera
-            }
-            getProductInstance() is HandHeld -> {
-                (getProductInstance() as HandHeld).camera
-            }
-            else -> null
-        }
-    }
-
-    //Function that returns True if a DJI aircraft is connected
-    private fun isAircraftConnected(): Boolean {
-        return getProductInstance() != null && getProductInstance() is Aircraft
-    }
-    
-    //Function that returns True if a DJI product is connected
-    private fun isProductModuleAvailable(): Boolean {
-        return (getProductInstance() != null)
-    }
-    
-    //Function that returns True if a DJI product's camera is available
-    private fun isCameraModuleAvailable(): Boolean {
-        return isProductModuleAvailable() && (getProductInstance()?.camera != null)
-    }
-
-    //Function that returns True if a DJI camera's playback feature is available
-    private fun isPlaybackAvailable(): Boolean {
-        return isCameraModuleAvailable() && (getProductInstance()?.camera?.playbackManager != null)
-    }
-}
-```
+The `MainActivity.kt` file is created by Android Studio by default. It is used to manage the connection to the drone, the streaming view and uses delegates to control the camera user interface. Let's replace its code within the sample project.
 
 In the code shown above, we implement the following features:
 
-1. Create the layout UI elements variables, including a TextureView `videoSurface`, three Buttons `captureBtn`, `shootPhotoModeBtn`, `recordVideoModeBtn`, one Toggle Button `recordBtn`, and a TextView `recordingTime`.
+1. ActiveState: sample code to display the active state of a camera
+2. CameraMode: sample code to display and change the camera mode (photo capture or video recording)
+3. StartStop: sample code to manage a button to start/stop photo capture and video recording
+4. WhiteBalanceTemperature: sample code to display and change custom white balance temperature
 
-2. Create a VideoDataListener variable called `receivedVideoDataListener` and a DJICodecManager variable called `codecManager`. The VideoDataListener will be used to recieve video data from a connected DJI product and the DJICodecManager will be used to decode the recieved video data.
+#### 1. Get the Ground Sdk Session
 
-3. In the `onCreate()` function, invoke the `initUI()` method to initialize UI the variables. Then initialize `receivedVideoDataListener` and assign `codecManager` to decode the video data the listener recieves from a connected DJI product. Then get an instance of the camera from the DJI product and by accessing its `setSystemStateCallback`, have it display the elapsed recording time on the `recordingTime` TextView (if the camera is video recording).
+In order to use GroundSdk in your application, you first have to obtain a GroundSdk session at the activity creation. So open your activity file, and add:
 
-4. In the `initUi()` function, implement the `setOnClickListener()` method for all the Buttons. Also implement the `setOnCheckedChangeListener()` method for the `recordBtn` Toggle Button and set its action to start video recording (via the `startRecord()` function) when toggled and stop recording (via the `stopRecord()` function) when untoggled. Furthermore, initialize the surfaceTextureListener for `videoSurface` to allow it to display the video stream from the DJI product's camera.
+```kotlin
+class MainActivity : AppCompatActivity() {
 
-6. In the activity's `onResume()` function, invoke the `initPreviewer()` function which adds `receivedVideoDataListener` to the primary video feed of the connected DJI product's VideoFeeder. In the activity's `onPause()` and `onDestroy` functions, invoke `uninitPreviewer()` function which will reset the camera and stop the video feed.
+    /** GroundSdk instance. */
+    private lateinit var groundSdk: GroundSdk
 
-8. In the `onSurfaceTextureAvailable()` function, initialize `codecManager`. In the `onSurfaceTextureDestroyed()` function, clear the surface data of `codecManager` and uninitialize it.
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-9.  Override the `onClick()` method to implement the click actions of the buttons:
-    *   `captureBtn`: invokes `captureAction()` which tells the DJI product's camera to take a single photo
-    *   `shootPhotoModeBtn`: invokes `switchCameraMode(CameraMode.SHOOT_PHOTO)` which tells the DJI product's camera to set itself to **PHOTO** mode
-    *   `recordVideoModeBtn`: invokes `switchCameraMode(CameraMode.RECORD_VIDEO)` which which tells the DJI product's camera to set itself to **VIDEO** mode
+        // Get a GroundSdk session.
+        groundSdk = ManagedGroundSdk.obtainSession(this)
+        // All references taken are linked to the activity lifecycle and
+        // automatically closed at its destruction.
+    }
+}
+```
 
-#### 4.  Implementing the MainActivity Layout
+This GroundSdk session keeps and manages all GroundSdk references, according to the Android Activity lifecycle.
+
+#### 2. Connecting the the Drone
+
+To connect to a drone, you should use the AutoConnection facility.
+
+At the Activity start, get the facility and start it.
+
+```kotlin
+    override fun onStart() {
+        super.onStart()
+
+        // Monitor the auto connection facility.
+        groundSdk.getFacility(AutoConnection::class.java) {
+            // Called when the auto connection facility is available and when it changes.
+
+            it?.let{
+                // Start auto connection.
+                if (it.status != AutoConnection.Status.STARTED) {
+                    it.start()
+                }
+            }
+        }
+    }
+```
+
+Auto connection will automatically select and connect the device.
+
+You need to monitor the drone change to stop using the old one and start using the new one.
+
+```kotlin
+    // Drone:
+    /** Current drone instance. */
+    private var drone: Drone? = null
+
+    override fun onStart() {
+        super.onStart()
+
+        // Monitor the auto connection facility.
+        groundSdk.getFacility(AutoConnection::class.java) {
+            // Called when the auto connection facility is available and when it changes.
+
+            it?.let{
+                // Start auto connection.
+                if (it.status != AutoConnection.Status.STARTED) {
+                    it.start()
+                }
+
+                // If the drone has changed.
+                if (drone?.uid != it.drone?.uid) {
+                    if(drone != null) {
+                        // Stop monitoring the old drone.
+                        stopDroneMonitors()
+                    }
+
+                    // Monitor the new drone.
+                    drone = it.drone
+                    if(drone != null) {
+                        startDroneMonitors()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Starts drone monitors.
+     */
+    private fun startDroneMonitors() {
+    }
+
+    /**
+     * Stops drone monitors.
+     */
+    private fun stopDroneMonitors() {
+    }
+```
+
+#### 3. Monitoring the Drone & Implementing the MainActivity Layout
+
+Now you will monitor and display the drone connection state and its battery state.
 
 Open the `activity_main.xml` layout file and replace the code with the following:
 
 ```xml
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"  
-  xmlns:tools="http://schemas.android.com/tools"  
-  android:layout_width="match_parent"  
-  android:layout_height="match_parent"  
-  android:orientation="vertical">  
-  
- <TextureView  android:id="@+id/video_previewer_surface"  
-  android:layout_width="match_parent"  
-  android:layout_height="match_parent"  
-  android:layout_above="@+id/linearLayout"  
-  android:layout_gravity="center"  
-  android:layout_marginBottom="-2dp" />  
-  
- <LinearLayout  android:layout_width="match_parent"  
-  android:layout_height="wrap_content"  
-  android:orientation="horizontal"  
-  android:layout_alignParentBottom="true"  
-  android:id="@+id/linearLayout">  
- <Button  android:id="@+id/btn_capture"  
-  android:layout_width="0dp"  
-  android:layout_weight="1"  
-  android:layout_gravity="center_vertical"  
-  android:layout_height="wrap_content"  
-  android:text="Capture"  
-  android:textSize="12sp"/>  
-  
- <ToggleButton  android:id="@+id/btn_record"  
-  android:layout_width="0dp"  
-  android:layout_height="wrap_content"  
-  android:text="Start Record"  
-  android:textOff="Start Record"  
-  android:textOn="Stop Record"  
-  android:layout_weight="1"  
-  android:layout_gravity="center_vertical"  
-  android:textSize="12dp"  
-  android:checked="false" />  
-  
- <Button  android:id="@+id/btn_shoot_photo_mode"  
-  android:layout_width="0dp"  
-  android:layout_weight="1"  
-  android:layout_height="wrap_content"  
-  android:layout_gravity="center_vertical"  
-  android:text="Shoot Photo Mode"  
-  android:textSize="12sp"/>  
-  
- <Button  android:id="@+id/btn_record_video_mode"  
-  android:layout_width="0dp"  
-  android:layout_height="wrap_content"  
-  android:text="Record Video Mode"  
-  android:layout_weight="1"  
-  android:layout_gravity="center_vertical" />  
-  
- </LinearLayout>  
- <TextView  android:id="@+id/timer"  
-  android:layout_width="150dp"  
-  android:layout_weight="1"  
-  android:layout_height="wrap_content"  
-  android:layout_gravity="center_vertical"  
-  android:layout_marginTop="23dp"  
-  android:gravity="center"  
-  android:textColor="#ffffff"  
-  android:layout_alignTop="@+id/video_previewer_surface"  
-  android:layout_centerHorizontal="true" />  
-  
-</RelativeLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:id="@+id/info"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:text="@string/drone"/>
+
+            <TextView
+                android:id="@+id/droneStateTxt"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="2"
+                tools:text="DISCONNECTED"
+                android:textAlignment="center"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:text="@string/remote"/>
+
+            <TextView
+                android:id="@+id/rcStateTxt"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="2"
+                tools:text="DISCONNECTED"
+                android:textAlignment="center"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:text="@string/active"/>
+
+            <TextView
+                android:id="@+id/activeTxt"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="2"
+                tools:text="false"
+                android:textAlignment="center"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:text="@string/mode"/>
+
+            <RadioGroup
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="horizontal">
+
+                <RadioButton android:id="@+id/photoMode"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/photo"/>
+
+                <RadioButton android:id="@+id/recordingMode"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/recording"/>
+            </RadioGroup>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:text="@string/white_balance_temperature"/>
+
+            <Spinner
+                android:id="@+id/whiteBalanceSpinner"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:textAlignment="center"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <com.parrot.drone.groundsdk.stream.GsdkStreamView
+        android:id="@+id/stream_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toBottomOf="@id/info"
+        app:layout_constraintBottom_toTopOf="@id/startStopBtn"
+        tools:layout_editor_absoluteY="38dp">
+    </com.parrot.drone.groundsdk.stream.GsdkStreamView>
+
+    <Button
+        android:id="@+id/startStopBtn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:enabled="false"
+        android:text="@string/start_photo"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
 ```
 
-In the xml file, we create a `TextureView`(id: video_previewer_surface) element to show the live video stream from the camera. Moreover, we implement a LinearLayout element to create the "Capture" `Button`(id: btn_capture), "Record" `ToggleButton`(id: btn_record), "Shoot Photo Mode" `Button`(id: btn_shoot_photo_mode) and "Record Video Mode" `Button`(id: btn_record_video_mode).
+Also, go to `strings.xml` and add the following strings:
 
-Lastly, we create a `TextView`(id: timer) element to show the recorded video time.
+```xml
+<resources>
+    <string name="app_name">Camera</string>
+    <string name="drone">Drone</string>
+    <string name="remote">Remote</string>
+    <string name="active">Active</string>
+    <string name="mode">Mode</string>
+    <string name="photo">Photo</string>
+    <string name="recording">Recording</string>
+    <string name="white_balance_temperature">White balance temperature</string>
+    <string name="unavailable">Unavailable</string>
+    <string name="start_photo">Start photo capture</string>
+    <string name="stop_photo">Stop photo capture</string>
+    <string name="start_recording">Start recording</string>
+    <string name="stop_recording">Stop recording</string>
+</resources>
+```
 
-#### 5.  Implementing the ConnectionActivity Class
+Your main activity layout should now look similar to this:
 
-To improve the user experience, we had better create an activity to show the connection status between the DJI Product and the SDK, once it's connected, the user can press the **OPEN** button to enter the **MainActivity**.
+<p align="center">
+   <img src="./images/activity_main.png" width="60%" height="60%">
+</p>
 
-In the project navigator, go to **app -> java -> com -> riis -> fpv**, and right-click on the fpv directory. Select **New -> Kotlin Class/File** to create a new kotlin class and name it as `ConnectionActivity.kt`.
-
-Next, replace the code of the `ConnectionActivity.kt` file with the following:
+Now we initialize new text views and stream views in the main activity.
 
 ```kotlin
-package com.riis.fpv
+    // User interface:
+    /** Video stream view. */
+    private val streamView by lazy { findViewById<GsdkStreamView>(R.id.stream_view) }
+    /** Drone state text view. */
+    private val droneStateTxt by lazy { findViewById<TextView>(R.id.droneStateTxt) }
+    /** Remote state text view. */
+    private val rcStateTxt by lazy { findViewById<TextView>(R.id.rcStateTxt) }
 
-import android.Manifest
-import android.content.Intent
-import androidx.appcompat.app.AppCompatActivity
-import android.os.Bundle
-import android.widget.Button
-import android.widget.TextView
-import androidx.activity.viewModels
-import androidx.core.app.ActivityCompat
-import androidx.lifecycle.Observer
-import dji.sdk.sdkmanager.DJISDKManager
-
-/*
-This activity manages SDK registration and establishing a connection between the
-DJI product and the user's mobile phone.
- */
-class ConnectionActivity : AppCompatActivity() {
-
-    //Class Variables
-    private lateinit var mTextConnectionStatus: TextView
-    private lateinit var mTextProduct: TextView
-    private lateinit var mTextModelAvailable: TextView
-    private lateinit var mBtnOpen: Button
-    private lateinit var mVersionTv: TextView
-
-    private val model: ConnectionViewModel by viewModels() //linking the activity to a viewModel
-
-    companion object {
-        const val TAG = "ConnectionActivity"
-    }
-
-    //Creating the Activity
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+    
+        // Initialize user interface default values.
+        droneStateTxt.text = DeviceState.ConnectionState.DISCONNECTED.toString()
+        rcStateTxt.text = DeviceState.ConnectionState.DISCONNECTED.toString()
+    
+        streamView.paddingFill = PADDING_FILL_BLUR_CROP
+    
+        // Get a GroundSdk session.
+        groundSdk = ManagedGroundSdk.obtainSession(this)
+        // All references taken are linked to the activity lifecycle and
+        // automatically closed at its destruction.
+    }
+```
 
-        //inflating the activity_connection.xml layout as the activity's view
-        setContentView(R.layout.activity_connection)
+#### 4. Drone State Monitoring
 
-        /*
-        Request the following permissions defined in the AndroidManifest.
-        1 is the integer constant we chose to use when requesting app permissions
-        */
-        ActivityCompat.requestPermissions(this,
-            arrayOf(
-                Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                Manifest.permission.VIBRATE,
-                Manifest.permission.INTERNET,
-                Manifest.permission.ACCESS_WIFI_STATE,
-                Manifest.permission.WAKE_LOCK,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.ACCESS_NETWORK_STATE,
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.CHANGE_WIFI_STATE,
-                Manifest.permission.MOUNT_UNMOUNT_FILESYSTEMS,
-                Manifest.permission.READ_EXTERNAL_STORAGE,
-                Manifest.permission.SYSTEM_ALERT_WINDOW,
-                Manifest.permission.READ_PHONE_STATE
-            ), 1)
+In order to display the drone connection state, set an observer on the drone state, and get its ConnectionState.
 
-        //Initialize the UI, register the app with DJI's mobile SDK, and set up the observers
-        initUI()
-        model.registerApp()
-        observers()
+When you have finished with it and you want to stop monitoring it, close the drone state reference.
+
+```kotlin
+    // Drone:
+    /** Current drone instance. */
+    private var drone: Drone? = null
+    /** Reference to the current drone state. */
+    private var droneStateRef: Ref<DeviceState>? = null
+
+    /**
+     * Starts drone monitors.
+     */
+    private fun startDroneMonitors() {
+        // Monitor drone state.
+        monitorDroneState()
     }
 
-    //Function to initialize the activity's UI
-    private fun initUI() {
+    /**
+     * Stops drone monitors.
+     */
+    private fun stopDroneMonitors() {
+        // Close all references linked to the current drone to stop their monitoring.
 
-        //referencing the layout views using their resource ids
-        mTextConnectionStatus = findViewById(R.id.text_connection_status)
-        mTextModelAvailable = findViewById(R.id.text_model_available)
-        mTextProduct = findViewById(R.id.text_product_info)
-        mBtnOpen = findViewById(R.id.btn_open)
-        mVersionTv = findViewById(R.id.textView2)
+        droneStateRef?.close()
+        droneStateRef = null
+    }
 
-        //Getting the DJI SDK version and displaying it on mVersionTv TextView
-        mVersionTv.text = resources.getString(R.string.sdk_version, DJISDKManager.getInstance().sdkVersion)
+    /**
+     * Monitor current drone state.
+     */
+    private fun monitorDroneState() {
+        // Monitor current drone state.
+        droneStateRef = drone?.getState {
+            // Called at each drone state update.
 
-        mBtnOpen.isEnabled = false //mBtnOpen Button is initially disabled
+            it?.let {
+                // Update drone connection state view.
+                droneStateTxt.text = it.connectionState.toString()
+            }
+        }
+    }
+```
 
-        //If mBtnOpen Button is clicked on, start MainActivity (only works when button is enabled)
-        mBtnOpen.setOnClickListener {
-            val intent = Intent(this, MainActivity::class.java)
-            startActivity(intent)
+#### 5. Drone Live Stream Monitoring
+
+In order to display the drone's live stream, first create a method called `startVideoStream()` and set an observer to monitor the stream server.
+Also, remember to define the reference variables to the live stream and the stream server.
+
+```kotlin
+    /** Reference to the current drone stream server Peripheral. */
+    private var streamServerRef: Ref<StreamServer>? = null
+    /** Reference to the current drone live stream. */
+    private var liveStreamRef: Ref<CameraLive>? = null
+    /** Current drone live stream. */
+    private var liveStream: CameraLive? = null
+    
+    /**
+     * Starts the video stream.
+     */
+    private fun startVideoStream() {
+        // Monitor the stream server.
+        streamServerRef = drone?.getPeripheral(StreamServer::class.java) { streamServer ->
+            // Called when the stream server is available and when it changes.
+
+            streamServer?.run {
+                // Enable Streaming
+                if(!streamingEnabled()) {
+                    enableStreaming(true)
+                }
+
+                // Monitor the live stream.
+                if (liveStreamRef == null) {
+                    liveStreamRef = live { stream ->
+                        // Called when the live stream is available and when it changes.
+
+                        if (stream != null) {
+                            if (liveStream == null) {
+                                // It is a new live stream.
+
+                                // Set the live stream as the stream
+                                // to be render by the stream view.
+                                streamView.setStream(stream)
+                            }
+
+                            // Play the live stream.
+                            if (stream.playState() != CameraLive.PlayState.PLAYING) {
+                                stream.play()
+                            }
+                        } else {
+                            // Stop rendering the stream
+                            streamView.setStream(null)
+                        }
+                        // Keep the live stream to know if it is a new one or not.
+                        liveStream = stream
+                    }
+                }
+            } ?: run {
+                // Stop monitoring the live stream
+                liveStreamRef?.close()
+                liveStreamRef = null
+                // Stop rendering the stream
+                streamView.setStream(null)
+            }
+        }
+    }
+```
+
+In the code above, we get the stream server peripheral and an observer is registered that is responsible for detecting changes to the stream server.
+
+By accessing the `streamServer`, we are able to run various methods native to the StreamServer. If the `streamServer` turns out to be null, we stop monitoring the live stream and stop rendering the stream. Whereas, if it isn't null, we enable, monitor, and play the drone's live stream onto the streamview.
+
+Finally, implement everything in the following methods:
+
+```kotlin
+    /**
+     * Resets drone user interface part.
+     */
+    private fun resetDroneUi() {
+        // Reset drone user interface views.
+        droneStateTxt.text = DeviceState.ConnectionState.DISCONNECTED.toString()
+
+        // Stop rendering the stream.
+        streamView.setStream(null)
+    }
+
+    /**
+     * Starts drone monitors.
+     */
+    private fun startDroneMonitors() {
+        // Monitor drone state.
+        monitorDroneState()
+
+        // Start video stream.
+        startVideoStream()
+    }
+
+    /**
+     * Stops drone monitors.
+     */
+    private fun stopDroneMonitors() {
+        // Close all references linked to the current drone to stop their monitoring.
+
+        droneStateRef?.close()
+        droneStateRef = null
+
+        liveStreamRef?.close()
+        liveStreamRef = null
+
+        streamServerRef?.close()
+        streamServerRef = null
+
+        liveStream = null
+    }
+```
+
+#### 6. Reset Drone User Interface
+
+When you stop monitoring a drone, you have to reset the drone user interface to prevent garbage display.
+
+```kotlin
+    override fun onStart() {
+        super.onStart()
+
+        // Monitor the auto connection facility.
+        groundSdk.getFacility(AutoConnection::class.java) {
+            // Called when the auto connection facility is available and when it changes.
+
+            it?.let{
+                // Start auto connection.
+                if (it.status != AutoConnection.Status.STARTED) {
+                    it.start()
+                }
+
+                // If the drone has changed.
+                if (drone?.uid != it.drone?.uid) {
+                    if(drone != null) {
+                        // Stop monitoring the old drone.
+                        stopDroneMonitors()
+
+                        // Reset user interface drone part.
+                        resetDroneUi()
+                    }
+
+                    // Monitor the new drone.
+                    drone = it.drone
+                    if(drone != null) {
+                        startDroneMonitors()
+                    }
+                }
+
+            }
         }
     }
 
-    //Function to setup observers
-    private fun observers() {
-        //observer listens to changes to the connectionStatus variable stored in the viewModel
-        model.connectionStatus.observe(this, Observer<Boolean> { isConnected ->
-            //If boolean is True, enable mBtnOpen button. If false, disable the button.
-            if (isConnected) {
-                mTextConnectionStatus.text = "Status: Connected"
-                mBtnOpen.isEnabled = true
-            }
-            else {
-                mTextConnectionStatus.text = "Status: Disconnected"
-                mBtnOpen.isEnabled = false
-            }
-        })
-
-        /*
-        Observer listens to changes to the product variable stored in the viewModel.
-        product is a BaseProduct object and represents the DJI product connected to the mobile device
-        */
-        model.product.observe(this, Observer { baseProduct ->
-            //if baseProduct is connected to the mobile device, display its firmware version and model name.
-            if (baseProduct != null && baseProduct.isConnected) {
-                mTextModelAvailable.text = baseProduct.firmwarePackageVersion
-
-                //name of the aircraft attached to the remote controller
-                mTextProduct.text = baseProduct.model.displayName
-            }
-        })
+    /**
+     * Resets drone user interface part.
+     */
+    private fun resetDroneUi() {
+        // Reset drone user interface views.
+        droneStateTxt.text = DeviceState.ConnectionState.DISCONNECTED.toString()
+        droneBatteryTxt.text = ""
     }
-}
 ```
-In the code shown above, we implement the following:
 
-1. Create the layout UI elements variables, including four TextViews `mTextConnectionStatus`, `mTextProduct`, `mTextModelAvailable`, `mVersionTv` and one Button `mBtnOpen`.
 
-2. Link the activity to a ViewModel that stores the connection state and DJI SDK functions
+#### 7.  Implementing the Remote Control
 
-4. In the onCreate() method, we request all the neccessary permissions for this application to work using the `ActivityCompat.requestPermissions()` method. We then invoke the `initUI()` method to initialize the four TextViews and the Button. We also setup the observers for this activity using the `observers()` method.
+We will see how to connect to a remote control and display its connection state. We can use the auto connection facility as with the drone, and get the remote control from it.
 
-5. In the `initUI()` method, The `mBtnOpen` button is initially diabled. We invoke the `setOnClickListener()` method of `mBtnOpen` and set the Button's click action to start the MainActivity (only works when button is enabled). The `mVersionTv` TextView is set to display the DJI SDK version.
-
-6. In the `observers()` method, we are observing changes (from the ViewModel) to the connection state between app and the DJI product as well as any changes to the product itself. Based on this, the `mTextConnectionStatus` will display the connection status, `mTextProduct` will the display the product's name, and `mTextModelAvailable` will display the DJI product's firmware version. If a DJI product is connected, the `mBtnOpen` Button becomes enabled.
-
-#### 6. Implementing the ConnectionActivity Layout
-
-Open the `activity_connection.xml` layout file and replace the code with the following:
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>  
-<RelativeLayout  
-  xmlns:android="http://schemas.android.com/apk/res/android"  
-  xmlns:tools="http://schemas.android.com/tools"  
-  xmlns:app="http://schemas.android.com/apk/res-auto"  
-  android:layout_width="match_parent"  
-  android:layout_height="match_parent"  
-  tools:context=".ConnectionActivity">  
-  
- <TextView  android:id="@+id/text_connection_status"  
-  android:layout_width="wrap_content"  
-  android:layout_height="wrap_content"  
-  android:layout_alignBottom="@+id/text_product_info"  
-  android:layout_centerHorizontal="true"  
-  android:layout_marginBottom="89dp"  
-  android:gravity="center"  
-  android:text="Status: No Product Connected"  
-  android:textColor="@android:color/black"  
-  android:textSize="20dp"  
-  android:textStyle="bold" />  
-  
- <TextView  android:id="@+id/text_product_info"  
-  android:layout_width="wrap_content"  
-  android:layout_height="wrap_content"  
-  android:layout_centerHorizontal="true"  
-  android:layout_marginTop="270dp"  
-  android:text="@string/product_information"  
-  android:textColor="@android:color/black"  
-  android:textSize="20dp"  
-  android:gravity="center"  
-  android:textStyle="bold"  
-  />  
-  
- <TextView  android:id="@+id/text_model_available"  
-  android:layout_width="match_parent"  
-  android:layout_height="wrap_content"  
-  android:layout_centerHorizontal="true"  
-  android:gravity="center"  
-  android:layout_marginTop="300dp"  
-  android:text="@string/model_not_available"  
-  android:textSize="15dp"/>  
-  
- <Button  android:id="@+id/btn_open"  
-  android:layout_width="150dp"  
-  android:layout_height="55dp"  
-  android:layout_centerHorizontal="true"  
-  android:layout_marginTop="350dp"  
-  android:background="@drawable/round_btn"  
-  android:text="Open"  
-  android:textColor="@color/colorWhite"  
-  android:textSize="20dp"  
-  />  
-  
- <TextView  android:layout_width="wrap_content"  
-  android:layout_height="wrap_content"  
-  android:layout_centerHorizontal="true"  
-  android:layout_marginTop="430dp"  
-  android:text="@string/sdk_version"  
-  android:textSize="15dp"  
-  android:id="@+id/textView2" />  
-  
- <TextView  android:id="@+id/textView"  
-  android:layout_width="wrap_content"  
-  android:layout_height="wrap_content"  
-  android:layout_marginTop="58dp"  
-  android:text="@string/app_name"  
-  android:textAppearance="?android:attr/textAppearanceSmall"  
-  android:textColor="@color/black_overlay"  
-  android:textSize="20dp"  
-  android:textStyle="bold"  
-  android:layout_alignParentTop="true"  
-  android:layout_centerHorizontal="true" />  
-  
-</RelativeLayout>
-```
-In the xml file, we create four TextViews and one Button within a RelativeLayout. We use the `TextView(id: text_connection_status)` to show the product connection status and use the `TextView(id:text_product_info)` to show the connected product name. The `Button(id: btn_open)` is used to open the **MainActivity**.
-
-#### 7. Implementing the ConnectionViewModel Class
-
-To store important variables and functions needed for mobile SDK registration and connection to the DJI product, an AndroidViewModel class is needed. This allows the app to maintain its connection state across rotation death.
-
-In the project navigator, go to **app -> java -> com -> riis -> fpv**, and right-click on the fpv directory. Select **New -> Kotlin Class/File** to create a new kotlin class and name it as `ConnectionViewModel.kt`.
-
-Next, replace the code of the `ConnectionViewModel.kt` file with the following:
 ```kotlin
-package com.riis.fpv
+    // Remote control:
+/** Current remote control instance. */
+private var rc: RemoteControl? = null
 
-import android.app.Application
-import android.util.Log
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.MutableLiveData
-import dji.common.error.DJIError
-import dji.common.error.DJISDKError
-import dji.sdk.base.BaseComponent
-import dji.sdk.base.BaseProduct
-import dji.sdk.sdkmanager.DJISDKInitEvent
-import dji.sdk.sdkmanager.DJISDKManager
+override fun onStart() {
+    super.onStart()
 
-/*
-This ViewModel stores important variables and functions needed for mobile SDK registration
-and connection to the DJI product. This allows the app to maintain its connection state
-across rotation death.
+    // Monitor the auto connection facility.
+    groundSdk.getFacility(AutoConnection::class.java) {
+        // Called when the auto connection facility is available and when it changes.
+
+        it?.let{
+            // Start auto connection.
+            if (it.status != AutoConnection.Status.STARTED) {
+                it.start()
+            }
+
+            // If the drone has changed.
+            if (drone?.uid != it.drone?.uid) {
+                if(drone != null) {
+                    // Stop monitoring the old drone.
+                    stopDroneMonitors()
+
+                    // Reset user interface drone part.
+                    resetDroneUi()
+                }
+
+                // Monitor the new drone.
+                drone = it.drone
+                if(drone != null) {
+                    startDroneMonitors()
+                }
+            }
+
+            // If the remote control has changed.
+            if (rc?.uid  != it.remoteControl?.uid) {
+                if(rc != null) {
+                    // Stop monitoring the old remote.
+                    stopRcMonitors()
+
+                    // Reset user interface Remote part.
+                    resetRcUi()
+                }
+
+                // Monitor the new remote.
+                rc = it.remoteControl
+                if(rc != null) {
+                    startRcMonitors()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Resets remote user interface part.
  */
-class ConnectionViewModel(application: Application) : AndroidViewModel(application) {
+private fun resetRcUi() {
+}
 
-    //product is a BaseProduct object which stores an instance of the currently connected DJI product
-    val product: MutableLiveData<BaseProduct?> by lazy {
-        MutableLiveData<BaseProduct?>()
+/**
+ * Starts remote control monitors.
+ */
+private fun startRcMonitors() {
+}
+
+/**
+ * Stops remote control monitors.
+ */
+private fun stopRcMonitors() {
+}
+```
+Then get, initialize and reset this new text views in your activity.
+
+```kotlin
+    // User interface:
+    /** Video stream view. */
+    private val streamView by lazy { findViewById<GsdkStreamView>(R.id.stream_view) }
+    /** Drone state text view. */
+    private val droneStateTxt by lazy { findViewById<TextView>(R.id.droneStateTxt) }
+    /** Remote state text view. */
+    private val rcStateTxt by lazy { findViewById<TextView>(R.id.rcStateTxt) }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+    
+        // Initialize user interface default values.
+        droneStateTxt.text = DeviceState.ConnectionState.DISCONNECTED.toString()
+        rcStateTxt.text = DeviceState.ConnectionState.DISCONNECTED.toString()
+    
+        streamView.paddingFill = PADDING_FILL_BLUR_CROP
+    
+        // Get a GroundSdk session.
+        groundSdk = ManagedGroundSdk.obtainSession(this)
+        // All references taken are linked to the activity lifecycle and
+        // automatically closed at its destruction.
+    }
+    /**
+     * Resets remote user interface part.
+     */
+    private fun resetRcUi() {
+        // Reset remote control user interface views.
+        rcStateTxt.text = DeviceState.ConnectionState.DISCONNECTED.toString()
+    }
+```
+
+As with the drone, set an observer on the remote control state to display its connectionState. Then, close the remote control references to stop monitoring them.
+
+```kotlin
+    // Remote control:
+    /** Current remote control instance. */
+    private var rc: RemoteControl? = null
+    /** Reference to the current remote control state. */
+    private var rcStateRef: Ref<DeviceState>? = null
+
+    /**
+     * Starts remote control monitors.
+     */
+    private fun startRcMonitors() {
+        // Monitor remote state
+        monitorRcState()
     }
 
-    //connectionStatus boolean describes whether or not a DJI product is connected
-    val connectionStatus: MutableLiveData<Boolean> = MutableLiveData(false)
+    /**
+     * Stops remote control monitors.
+     */
+    private fun stopRcMonitors() {
+        // Close all references linked to the current remote to stop their monitoring.
 
-    //DJI SDK app registration
-    fun registerApp() {
-        /*
-        Getting an instance of the DJISDKManager and using it to register the app
-        (requires API key in AndroidManifest). After installation, the app connects to the DJI server via
-        internet and verifies the API key. Subsequent app starts will use locally cached verification
-        information to register the app when the cached information is still valid.
-        */
-        DJISDKManager.getInstance().registerApp(getApplication(), object: DJISDKManager.SDKManagerCallback {
-            //Logging the success or failure of the registration
-            override fun onRegister(error: DJIError?) {
-                if (error == DJISDKError.REGISTRATION_SUCCESS) {
-                    Log.i(ConnectionActivity.TAG, "onRegister: Registration Successful")
-                } else {
-                    Log.i(ConnectionActivity.TAG, "onRegister: Registration Failed - ${error?.description}")
-                }
-            }
-            //called when the remote controller disconnects from the user's mobile device
-            override fun onProductDisconnect() {
-                Log.i(ConnectionActivity.TAG, "onProductDisconnect: Product Disconnected")
-                connectionStatus.postValue(false) //setting connectionStatus to false
-            }
-            //called when the remote controller connects to the user's mobile device
-            override fun onProductConnect(baseProduct: BaseProduct?) {
-                Log.i(ConnectionActivity.TAG, "onProductConnect: Product Connected")
-                product.postValue(baseProduct)
-                connectionStatus.postValue(true) //setting connectionStatus to true
-            }
-            //called when the DJI aircraft changes
-            override fun onProductChanged(baseProduct: BaseProduct?) {
-                Log.i(ConnectionActivity.TAG, "onProductChanged: Product Changed - $baseProduct")
-                product.postValue(baseProduct)
+        rcStateRef?.close()
+        rcStateRef = null
+    }
 
-            }
-            //Called when a component object changes. This method is not called if the component is already disconnected
-            override fun onComponentChange(componentKey: BaseProduct.ComponentKey?, oldComponent: BaseComponent?, newComponent: BaseComponent?) {
-                //Alert the user which component has changed, and mention what new component replaced the old component (can be null)
-                Log.i(ConnectionActivity.TAG, "onComponentChange key: $componentKey, oldComponent: $oldComponent, newComponent: $newComponent")
+    /**
+     * Monitor current remote control state.
+     */
+    private fun monitorRcState() {
+        // Monitor current drone state.
+        rcStateRef = rc?.getState {
+            // Called at each remote state update.
 
-                //Listens to connectivity changes in each new component
-                newComponent?.let { component ->
-                    component.setComponentListener { connected ->
-                        Log.i(ConnectionActivity.TAG, "onComponentConnectivityChange: $connected")
-                    }
-                }
+            it?.let {
+                // Update remote connection state view.
+                rcStateTxt.text = it.connectionState.toString()
             }
-            //called when loading SDK resources
-            override fun onInitProcess(p0: DJISDKInitEvent?, p1: Int) {}
+        }
+    }
+```
 
-            //Called when Fly Safe database download progress is updated
-            override fun onDatabaseDownloadProgress(p0: Long, p1: Long) {}
+#### 8. Implementing the Camera UI Delegates
+
+> Note: Please skip this step for now and instead create each of the delegate classes as described below.
+
+First start off by declaring the following variables:
+
+```kotlin
+    // Delegates to manage camera user interface:
+    /** Delegate to display camera active state. */
+    private val activeState by lazy { ActiveState(findViewById(R.id.activeTxt)) }
+    /** Delegate to display and change camera mode. */
+    private val cameraMode by lazy { CameraMode(findViewById(R.id.photoMode), findViewById(R.id.recordingMode)) }
+    /** Delegate to manage start and stop photo capture and video recording button. */
+    private val startStop by lazy { StartStop(findViewById(R.id.startStopBtn)) }
+    /** Delegate to display and change custom white balance temperature. */
+    private val whiteBalanceTemperature by lazy { WhiteBalanceTemperature(findViewById(R.id.whiteBalanceSpinner)) }
+```
+
+The sample code showing how to use the camera API is available is the following delegates:
+- ActiveState: sample code to display the active state of a camera
+- CameraMode: sample code to display and change the camera mode (photo capture or video recording)
+- StartStop: sample code to manage a button to start/stop photo capture and video recording
+- WhiteBalanceTemperature: sample code to display and change custom white balance temperature
+
+Finally, start and stop monitoring each delegate in the respective drone monitor methods below:
+
+```kotlin
+    /**
+     * Starts drone monitors.
+     */
+    private fun startDroneMonitors() {
+        // Monitor drone state.
+        monitorDroneState()
+
+        // Start video stream.
+        startVideoStream()
+
+        // Start monitoring by camera user interface delegates.
+        drone?.let { drone ->
+            activeState.startMonitoring(drone)
+
+            cameraMode.startMonitoring(drone)
+
+            startStop.startMonitoring(drone)
+
+            whiteBalanceTemperature.startMonitoring(drone)
+        }
+    }
+
+    /**
+     * Stops drone monitors.
+     */
+    private fun stopDroneMonitors() {
+        // Close all references linked to the current drone to stop their monitoring.
+
+        droneStateRef?.close()
+        droneStateRef = null
+
+        liveStreamRef?.close()
+        liveStreamRef = null
+
+        streamServerRef?.close()
+        streamServerRef = null
+
+        liveStream = null
+
+        // Stop monitoring by camera user interface delegates.
+
+        activeState.stopMonitoring()
+
+        cameraMode.stopMonitoring()
+
+        startStop.stopMonitoring()
+
+        whiteBalanceTemperature.stopMonitoring()
+    }
+```
+
+---
+
+### Implementing the ActiveState Delegate
+
+This class is used to display the active state of a camera, using the `MainCamera` and `camera2.MainCamera` peripherals (respectively Camera1 API and Camera2 API). Fore example, when the camera is inactive, most features are unavailable, like taking pictures, video recording, zoom control. However, it is possible to configure camera parameters.
+
+In the project navigator, go to **app -> java -> com -> parrot -> camera**, and right-click on the camera directory. Select **New -> Kotlin Class/File** to create a new kotlin class and name it as `ActiveState.kt`.
+
+Begin by making class variables for each of the camera peripherals:
+
+```kotlin
+class ActiveState(
+    /** Active state text view. */
+    private val activeTxt: TextView
+) {
+    /** Reference to `MainCamera` peripheral. */
+    private var mainCameraRef: Ref<MainCamera>? = null
+
+    /** Reference to `camera2.MainCamera` peripheral. */
+    private var mainCamera2Ref: Ref<com.parrot.drone.groundsdk.device.peripheral.camera2.MainCamera>? =
+        null
+}
+```
+
+Next, create each of the following methods within the class:
+
+```kotlin
+    /**
+     * Starts camera peripherals monitoring.
+     *
+     * @param drone drone to monitor
+     */
+    fun startMonitoring(drone: Drone) {
+
+        // Drones: ANAFI_4K, ANAFI_THERMAL, ANAFI_USA
+        // Monitor `MainCamera` peripheral, for drones supporting Camera1 API.
+        // We keep camera reference as a class property, otherwise change notifications would stop.
+        mainCameraRef = drone.getPeripheral(MainCamera::class.java) { camera ->
+            // Called when the camera changes, on main thread.
+            camera?.let {
+                updateViewCamera1(camera)
+            } ?: run {
+                resetView()
+            }
+        }
+
+        // Drones: ANAFI_2
+        // Monitor `camera2.MainCamera` peripheral, for drones supporting Camera2 API.
+        // We keep camera reference as a class property, otherwise change notifications would stop.
+        mainCamera2Ref = drone.getPeripheral(com.parrot.drone.groundsdk.device.peripheral.camera2.MainCamera::class.java) { camera ->
+            // Called when the camera changes, on main thread.
+            camera?.let {
+                updateViewCamera2(camera)
+            } ?: run {
+                resetView()
+            }
+        }
+    }
+
+    /**
+     * Stops camera peripherals monitoring.
+     */
+    fun stopMonitoring() {
+        // Release `MainCamera` peripheral reference.
+        mainCameraRef?.close()
+        mainCameraRef = null
+
+        // Release `camera2.MainCamera` peripheral reference.
+        mainCamera2Ref?.close()
+        mainCamera2Ref = null
+
+        resetView()
+    }
+
+    /**
+     * Resets active state display.
+     */
+    private fun resetView() {
+        activeTxt.text = ""
+    }
+
+    /**
+     * Updates active state display with `MainCamera` peripheral (Camera1 API).
+     *
+     * @param camera camera peripheral
+     */
+    private fun updateViewCamera1(camera: MainCamera) {
+        // Display whether the camera is active.
+        activeTxt.text = camera.isActive.toString()
+    }
+
+    /**
+     * Updates active state display with `camera2.MainCamera` peripheral (Camera2 API).
+     *
+     * @param camera camera peripheral
+     */
+    private fun updateViewCamera2(camera: Camera) {
+        // Display whether the camera is active.
+        activeTxt.text = camera.active.toString()
+    }
+```
+
+Since this class is fairly straight forward and is mostly documented, not much else needs to be explained. This class is mainly responsible for monitoring the active state of the drone's camera and displaying it on a text view.
+
+---
+
+### Implementing the StartStop Delegate
+
+This class is used to manage a button to start and stop photo capture and video recording, using `MainCamera` and `camera2.MainCamera` peripherals (respectively Camera1 API and Camera2 API).
+
+In the project navigator, go to **app -> java -> com -> parrot -> camera**, and right-click on the camera directory. Select **New -> Kotlin Class/File** to create a new kotlin class and name it as `StartStop.kt`.
+
+Begin by making class variables for each of the camera peripherals:
+
+```kotlin
+class StartStop(
+    /** Start and stop button. */
+    private val startStopBt: Button
+) {
+    /** Reference to `MainCamera` peripheral. */
+    private var mainCameraRef: Ref<MainCamera>? = null
+
+    /** Reference to `camera2.MainCamera` peripheral. */
+    private var mainCamera2Ref: Ref<com.parrot.drone.groundsdk.device.peripheral.camera2.MainCamera>? =
+        null
+
+    /** `camera2.MainCamera` peripheral. This is used to know when peripheral appears. */
+    private var mainCamera2: Camera? = null
+}
+```
+Next create a onClick method for when the Start/Stop toggle button is clicked.
+```kotlin
+    /**
+    * Called when start and stop button is clicked.
+    */
+    private fun onStartStopButtonClicked() {
+    // Get `MainCamera` peripheral from its reference, if available.
+    mainCameraRef?.get()?.let { camera ->
+    startStopCamera1(camera)
+    } ?:
+
+    // Otherwise, get `camera2.MainCamera` peripheral from its reference, if available.
+    mainCamera2Ref?.get()?.let { camera ->
+    startStopCamera2(camera)
+    }
+    }
+```
+Next, create start-stop camera methods for each of the cameras while also setting up the button's listener:
+```kotlin
+    init {
+    // Setup button listener.
+    startStopBt.setOnClickListener { onStartStopButtonClicked() }
+    }
+
+    /**
+    * Starts or stops photo capture or video recording with `MainCamera` peripheral (Camera1 API).
+    *
+    * @param camera camera peripheral
+    */
+    private fun startStopCamera1(camera: MainCamera) {
+    // `MainCamera`provides methods indicating whether photo and recording can be started or stopped.
+    // Use these methods to trigger the desired action.
+    when {
+    camera.canStartPhotoCapture() -> camera.startPhotoCapture()
+    camera.canStopPhotoCapture() -> camera.stopPhotoCapture()
+    camera.canStartRecording() -> camera.startRecording()
+    camera.canStopRecording() -> camera.stopRecording()
+    }
+    }
+
+    /**
+    * Starts or stops photo capture or video recording with `camera2.MainCamera` peripheral (Camera2 API).
+    *
+    * @param camera camera peripheral
+    */
+    private fun startStopCamera2(camera: Camera) {
+    // Read current camera configuration and check camera mode (photo or recording).
+    when (camera.config[Camera.Config.MODE].value) {
+
+    Camera.Mode.PHOTO -> {
+    // Current camera mode is photo.
+    // So, get PhotoCapture sub-component to get photo capture state.
+    camera.component<Camera.PhotoCapture>()?.run {
+    // Start or stop photo capture depending on photo capture state.
+    when (state) {
+    Camera.PhotoCapture.State.Starting,
+    is Camera.PhotoCapture.State.Started -> stop()
+    is Camera.PhotoCapture.State.Stopping,
+    is Camera.PhotoCapture.State.Stopped -> start()
+    }
+    }
+    }
+
+    Camera.Mode.RECORDING -> {
+    // Current camera mode is recording.
+    // So, get Recording sub-component to get video recording state.
+    camera.component<Camera.Recording>()?.run {
+        // Start or stop video recording depending on recording state.
+        when (state) {
+        Camera.Recording.State.Starting,
+        is Camera.Recording.State.Started -> stop()
+        is Camera.Recording.State.Stopping,
+        is Camera.Recording.State.Stopped -> start()
+        }
+        }
+        }
+        }
+        }
+```
+After, create a reset and update method which updates the start-stop button's text depending on the cameras' state.
+
+```kotlin
+    /**
+     * Resets start and button display.
+     */
+    private fun resetView() {
+        startStopBt.isEnabled = false
+        startStopBt.setText(R.string.unavailable)
+    }
+
+    /**
+     * Updates start and button display with `MainCamera` peripheral (Camera1 API).
+     *
+     * @param camera camera peripheral
+     */
+    private fun updateViewCamera1(camera: MainCamera) {
+        // Enable button when camera is active.
+        startStopBt.isEnabled = camera.isActive
+
+        // Update button text depending on camera state.
+        // `MainCamera` provides methods indicating whether photo and recording can be started or stopped.
+        startStopBt.setText(when {
+            camera.canStartPhotoCapture() -> R.string.start_photo
+            camera.canStopPhotoCapture() -> R.string.stop_photo
+            camera.canStartRecording() -> R.string.start_recording
+            camera.canStopRecording() -> R.string.stop_recording
+            else -> R.string.unavailable
         })
+    }
+
+    /**
+     * Updates start and button display with `camera2.MainCamera` peripheral (Camera2 API).
+     *
+     * @param camera camera peripheral
+     */
+    private fun updateViewCamera2(camera: Camera) {
+        // Enable start and stop button when camera is active.
+        startStopBt.isEnabled = camera.active
+
+        // Get current camera configuration and check camera mode (photo or recording).
+        when (camera.config[Camera.Config.MODE].value) {
+
+            Camera.Mode.PHOTO -> {
+                // Current camera mode is photo.
+                // So, get PhotoCapture sub-component to get photo capture state.
+                camera.component<Camera.PhotoCapture>()?.apply {
+                    // Update button text based on photo capture state.
+                    startStopBt.setText(when (state) {
+                        Camera.PhotoCapture.State.Starting,
+                        is Camera.PhotoCapture.State.Started ->R.string.stop_photo
+                        is Camera.PhotoCapture.State.Stopping,
+                        is Camera.PhotoCapture.State.Stopped -> R.string.start_photo
+                    })
+                } ?: run {
+                    // PhotoCapture sub-component is not available, meaning photos cannot be taken.
+                    startStopBt.setText(R.string.unavailable)
+                    startStopBt.isEnabled = false
+                }
+            }
+
+            Camera.Mode.RECORDING -> {
+                // Current camera mode is recording.
+                // So, get Recording sub-component to get video recording state.
+                camera.component<Camera.Recording>()?.apply {
+                    // Update button text based on video recording state.
+                    startStopBt.setText(when (state) {
+                        Camera.Recording.State.Starting,
+                        is Camera.Recording.State.Started -> R.string.stop_recording
+                        is Camera.Recording.State.Stopping,
+                        is Camera.Recording.State.Stopped -> R.string.start_recording
+                    })
+                } ?: run {
+                    // Recording sub-component is not available, meaning videos cannot be recorded.
+                    startStopBt.setText(R.string.unavailable)
+                    startStopBt.isEnabled = false
+                }
+            }
+        }
+    }
+```
+Finally, setup the camera monitoring methods which are responsible for updating and resetting the state of the start-stop button.
+
+```kotlin
+    /**
+     * Starts camera peripherals monitoring.
+     *
+     * @param drone drone to monitor
+     */
+    fun startMonitoring(drone: Drone) {
+        // Drones: ANAFI_4K, ANAFI_THERMAL, ANAFI_USA
+        // Monitor `MainCamera` peripheral, for drones supporting Camera1 API.
+        // We keep camera reference as a class property, otherwise change notifications would stop.
+        mainCameraRef = drone.getPeripheral(MainCamera::class.java) { camera ->
+            // Called when the camera changes, on main thread.
+            camera?.let {
+                updateViewCamera1(camera)
+            } ?: run {
+                resetView()
+            }
+        }
+
+        // Drones: ANAFI_2
+        // Monitor `camera2.MainCamera` peripheral, for drones supporting Camera2 API.
+        // `camera2.MainCamera` provides sub-components, we have to register listeners for each
+        // sub-component for which we want to be notified of a change.
+        mainCamera2Ref = drone.getPeripheral(com.parrot.drone.groundsdk.device.peripheral.camera2.MainCamera::class.java) { camera->
+            // Called when the camera changes, on main thread.
+            camera?.let {
+                updateViewCamera2(camera)
+
+                // Register sub-components listeners, only when camera peripheral appears.
+                if (mainCamera2 == null) {
+                    // Get notified every time photo capture sub-component changes.
+                    camera.component<Camera.PhotoCapture> { updateViewCamera2(camera) }
+                    // Get notified every time recording sub-component changes.
+                    camera.component<Camera.Recording> { updateViewCamera2(camera) }
+
+                    // Note: sub-component refs are automatically closed by the camera itself becomes unavailable
+                }
+            } ?: run {
+                resetView()
+            }
+
+            mainCamera2 = camera
+        }
+    }
+
+    /**
+     * Stops camera peripherals monitoring.
+     */
+    fun stopMonitoring() {
+        // Release `MainCamera` peripheral reference.
+        mainCameraRef?.close()
+        mainCameraRef = null
+
+        // Release `camera2.MainCamera` peripheral reference.
+        mainCamera2Ref?.close()
+        mainCamera2Ref = null
+
+        mainCamera2 = null
+
+        resetView()
+    }
+```
+
+---
+
+### Implementing the Camera Mode Delegate
+
+This class is used to display and change camera modes, using `MainCamera` and `camera2.MainCamera` peripherals (respectively Camera1 API and Camera2 API). Camera mode indicates if the camera is configured either to take photos or to record videos.
+
+In the project navigator, go to **app -> java -> com -> parrot -> camera**, and right-click on the camera directory. Select **New -> Kotlin Class/File** to create a new kotlin class and name it as `CameraMode.kt`.
+
+Begin by making class variables for each of the camera peripherals along with listeners for the camera mode radio button:
+
+```kotlin
+class CameraMode(
+    /** Photo mode button. */
+    private val photoModeBt: RadioButton,
+    /** Recording mode button. */
+    private val recordingModeBt: RadioButton
+) {
+    /** Reference to `MainCamera` peripheral. */
+    private var mainCameraRef: Ref<MainCamera>? = null
+
+    /** Reference to `camera2.MainCamera` peripheral. */
+    private var mainCamera2Ref: Ref<com.parrot.drone.groundsdk.device.peripheral.camera2.MainCamera>? =
+        null
+
+    init {
+        // Setup buttons listeners.
+        photoModeBt.setOnClickListener { view -> onModeButtonClicked(view) }
+        recordingModeBt.setOnClickListener { view -> onModeButtonClicked(view) }
+    }
+}
+
+/**
+ * Called when camera mode button is clicked.
+ */
+private fun onModeButtonClicked(view: View) {
+    if (view is RadioButton && view.isChecked) {
+
+        // Get `MainCamera` peripheral from its reference, if available.
+        mainCameraRef?.get()?.let { camera ->
+            // Set camera mode.
+            setModeCamera1(camera, when (view.id) {
+                R.id.photoMode -> com.parrot.drone.groundsdk.device.peripheral.camera.Camera.Mode.PHOTO
+                else -> com.parrot.drone.groundsdk.device.peripheral.camera.Camera.Mode.RECORDING
+            })
+        } ?:
+
+        // Otherwise, get `camera2.MainCamera` peripheral from its reference, if available.
+        mainCamera2Ref?.get()?.let { camera ->
+            // Set camera mode.
+            setModeCamera2(camera, when (view.id) {
+                R.id.photoMode -> Camera.Mode.PHOTO
+                else -> Camera.Mode.RECORDING
+            })
+        }
     }
 }
 ```
-Here, we implement several features:
+Next, implement the set camera mode methods:
+```kotlin
+    /**
+    * Sets camera mode with `MainCamera` peripheral (Camera1 API).
+    *
+    * @param camera camera peripheral
+    * @param mode new camera mode
+    */
+    private fun setModeCamera1(camera: MainCamera,
+    mode: com.parrot.drone.groundsdk.device.peripheral.camera.Camera.Mode) {
+    // To change camera mode with `MainCamera` peripheral, we first get the `mode` setting.
+    // Then we set the new setting value.
+    // If the drone is connected, this will immediately send this new setting value to the
+    // drone.
+    camera.mode().value = mode
+    }
 
-* variable **product** is used to store an instance of the currently connected DJI product
-* variable **connectionStatus** describes whether or not a DJI product is connected
-* The app is registered with the DJI SDK and an instance of `SDKManagerCallback` is initialized to provide feedback     from the SDK.
-* Four interface methods of `SDKManagerCallback` are used. The `onRegister()` method is used to check the Application registration status and show text message here. When the product is connected or disconnected, the `onProductConnect()` and `onProductDisconnect()` methods will be invoked. Moreover, we use the `onComponentChange()` method to check the component changes.
-
->Note: Permissions must be requested by the application and granted by the user in order to register the DJI SDK correctly. This is taken care of in **ConnectionActivity** before it calls on the ViewModel's registerApp() method. Furthermore, the camera and USB hardwares must be declared in the **AndroidManifest** for DJI SDK to work.
-
-#### 8. Configuring the Resource XMLs
-
-Once you finish the above steps, let's copy all the images (xml files) from this Github project's drawable folder (**app -> res -> drawable**) to the same folder in your project.
-
-<p align="center">
-   <img src="https://github.com/riisinterns/drone-lab-three-camera-demo/blob/main/images/lab3_drawables_android_studio_screen_shot.PNG" width="30%" height="30%">
-</p>
-
-Moreover, open the `colors.xml` file and update the content as shown below:
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
-    <color name="black_overlay">#000000</color>
-    <color name="colorWhite">#FFFFFF</color>
-    <color name="background_blue">#242d34</color>
-    <color name="transparent">#00000000</color>
-    <color name="dark_gray">#80000000</color>
-</resources>
-```
-Furthermore, open the `strings.xml` file and replace the content with the following:
-```xml
-<resources>  
- <string name="app_name">DJIFPV-Kotlin</string>  
- <string name="action_settings">Settings</string>  
- <string name="disconnected">Disconnected</string>  
- <string name="product_information">Product Information</string>  
- <string name="connection_loose">Status: No Product Connected</string>  
- <string name="model_not_available">Model Not Available</string>  
- <string name="push_info">Push Info</string>  
- <string name="sdk_version">DJI SDK Version: %1$s</string>  
-</resources>
-```
-Lastly, open the `styles.xml` file and replace the content with the following:
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="status_text">
-        <item name="android:shadowColor">@color/black_overlay</item>
-        <item name="android:shadowDx">2</item>
-        <item name="android:shadowDy">1</item>
-        <item name="android:shadowRadius">6</item>
-        <item name="android:textSize">17sp</item>
-        <item name="android:textColor">@color/white</item>
-    </style>
-</resources>
-```
----
-### Registering the Application
-After you finish the above steps, let's register our application with the App Key you obtain from the DJI Developer Website. If you are not familiar with the App Key, please check the [Get Started](https://developer.dji.com/mobile-sdk/documentation/quick-start/index.html).
-1. Let's open the `AndroidManifest.xml` file and specify the permissions that your application needs by adding `<uses-permission>` elements into the `<manifest>` element of the `AndroidManifest.xml` file. We also need to declare the camera and USB hardwares using `<uses-feature>` child elements since they will be used by the application.
-```xml
-<uses-permission android:name="android.permission.BLUETOOTH" />
-<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-<uses-permission android:name="android.permission.VIBRATE" />
-<uses-permission android:name="android.permission.INTERNET" />
-<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-<uses-permission android:name="a`ndroid.permission.WAKE_LOCK" />
-<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
-<uses-permission android:name="android.permission.MOUNT_UNMOUNT_FILESYSTEMS"
-    tools:ignore="ProtectedPermissions" />
-<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-    tools:ignore="ScopedStorage" />
-<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-<uses-permission android:name="android.permission.READ_PHONE_STATE" />
-<uses-feature android:name="android.hardware.camera" />  
-<uses-feature android:name="android.hardware.camera.autofocus" />  
-<uses-feature  
-  android:name="android.hardware.usb.host"  
-  android:required="false" />  
-<uses-feature  
-  android:name="android.hardware.usb.accessory"  
-  android:required="true" />
-```
-Next, add `android:name=".MApplication"` inside of the `<application>` element in the `AndroidManifest.xml` file:
-```xml
-<application  
-  android:name="com.riis.fpv.MApplication"  
-  android:allowBackup="true"  
-  android:icon="@mipmap/ic_launcher"  
-  android:label="@string/app_name"  
-  android:roundIcon="@mipmap/ic_launcher_round"  
-  android:supportsRtl="true"  
-  android:theme="@style/Theme.DJIFPVKotlin">
+    /**
+    * Sets camera mode with `camera2.MainCamera` peripheral (Camera2 API).
+    *
+    * @param camera camera peripheral
+    * @param mode new camera mode
+    */
+    private fun setModeCamera2(camera: Camera, mode: Camera.Mode) {
+    // To change camera mode with `camera2.MainCamera` peripheral, we use the configuration editor.
+    // Create a configuration editor, starting from current configuration.
+    val configEditor = camera.config.edit(fromScratch = false)
+    // Set the value of the camera mode parameter.
+    // Note: In case of conflicts with other parameters, the editor may automatically unset the
+    // other conflicting parameters, so that the configuration remains consistent.
+    configEditor[Camera.Config.MODE].value = mode
+    // Automatically complete the edited configuration, to ensure that all parameters are set.
+    configEditor.autoComplete()
+    // Apply and send the new configuration to the drone, if the drone is connected.
+    configEditor.commit()
+    }
   ```
-Moreover, let's add the following elements as childs of the `<application>` element, right on top of the "ConnectionActivity" `<activity>` element as shown below:
-```xml
-<!-- DJI SDK -->
-<uses-library android:name="com.android.future.usb.accessory" />
-<uses-library
-   android:name="org.apache.http.legacy"
-   android:required="false" />
-<meta-data
-   android:name="com.dji.sdk.API_KEY"
-   android:value="Please enter your APP Key here." />
-<!-- DJI SDK -->
-```
-In the code above, you should substitute your **App Key** of the application for "Please enter your App Key here." in the value attribute under the `android:name="com.dji.sdk.API_KEY` attribute.
-Lastly, update the "MainActivity" and "ConnectionActivity" `<activity>` elements as shown below:
-```xml
-<activity android:name="com.riis.fpv.ConnectionActivity"
-            android:screenOrientation="portrait"
-            android:launchMode="singleTop"
-            android:configChanges="orientation">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED" />
-            </intent-filter>
-        </activity>
-        <activity android:name="com.riis.fpv.MainActivity"
-            android:screenOrientation="userLandscape"/>
-```
-In the code above, we add the attributes of `android:screenOrientation` to set "ConnectionActivity" as **portrait** and set "MainActivity" as **landscape**.
-Congratulations! Your Aerial FPV android app is complete, you can now use this app to control the camera of your DJI Product now.
+Create update methods to update the radio buttons:
+```kotlin
+    /**
+    * Updates camera mode display with `MainCamera` peripheral (Camera1 API).
+    *
+    * @param camera camera peripheral
+    */
+    private fun updateViewCamera1(camera: MainCamera) {
+    // Enable camera mode buttons if mode is not currently changing.
+    photoModeBt.isEnabled = !camera.mode().isUpdating
+    recordingModeBt.isEnabled = !camera.mode().isUpdating
+    // Update photo/recording mode radio button based on current camera mode setting.
+    photoModeBt.isChecked = camera.mode().value == com.parrot.drone.groundsdk.device.peripheral.camera.Camera.Mode.PHOTO
+    recordingModeBt.isChecked = camera.mode().value == com.parrot.drone.groundsdk.device.peripheral.camera.Camera.Mode.RECORDING
+    }
 
-#### Connection Activity
-<img src="https://github.com/riisinterns/drone-lab-three-camera-demo/blob/main/Videos/demo.gif" alt="drawing" width="30%" height="30%"/>
-
-#### Main Activity (FPV Screen)
-<img src="https://github.com/riisinterns/drone-lab-three-camera-demo/blob/main/Videos/demo2.gif" alt="drawing" width="60%" height="60%"/>
+    /**
+    * Updates camera mode display with `camera2.MainCamera` peripheral (Camera2 API).
+    *
+    * @param camera camera peripheral
+    */
+    private fun updateViewCamera2(camera: Camera) {
+    // Enable camera mode buttons if configuration is not currently changing.
+    photoModeBt.isEnabled = !camera.config.updating
+    recordingModeBt.isEnabled = !camera.config.updating
+    // Update photo/recording mode radio button based on current camera configuration.
+    photoModeBt.isChecked = camera.config[Camera.Config.MODE].value == Camera.Mode.PHOTO
+    recordingModeBt.isChecked = camera.config[Camera.Config.MODE].value == Camera.Mode.RECORDING
+    }
+```
+Finally, setup the camera monitoring methods which are responsible for updating and resetting the state of the radio buttons.
+```kotlin
+            /**
+     * Starts camera peripherals monitoring.
+     *
+     * @param drone drone to monitor
+     */
+    fun startMonitoring(drone: Drone) {
+        // Drones: ANAFI_4K, ANAFI_THERMAL, ANAFI_USA
+        // Monitor `MainCamera` peripheral, for drones supporting Camera1 API.
+        // We keep camera reference as a class property, otherwise change notifications would stop.
+        mainCameraRef = drone.getPeripheral(MainCamera::class.java) { camera ->
+            // Called when the camera changes, on main thread.
+            camera?.let {
+                updateViewCamera1(camera)
+            } ?: run {
+                resetView()
+            }
+        }
+    
+        // Drones: ANAFI_2
+        // Monitor `camera2.MainCamera` peripheral, for drones supporting Camera2 API.
+        // We keep camera reference as a class property, otherwise change notifications would stop.
+        mainCamera2Ref = drone.getPeripheral(com.parrot.drone.groundsdk.device.peripheral.camera2.MainCamera::class.java) { camera ->
+            // Called when the camera changes, on main thread.
+            camera?.let {
+                updateViewCamera2(camera)
+            } ?: run {
+                resetView()
+            }
+        }
+    }
+    
+    /**
+     * Stops camera peripherals monitoring.
+     */
+    fun stopMonitoring() {
+        // Release `MainCamera` peripheral reference.
+        mainCameraRef?.close()
+        mainCameraRef = null
+    
+        // Release `camera2.MainCamera` peripheral reference.
+        mainCamera2Ref?.close()
+        mainCamera2Ref = null
+    
+        resetView()
+    }
+    
+    /**
+     * Resets camera mode display.
+     */
+    private fun resetView() {
+        photoModeBt.isEnabled = false
+        recordingModeBt.isEnabled = false
+    }
+```
 
 ---
-### Connecting to the Aircraft or Handheld Device
 
-Please check this [Connect Mobile Device and Run Application](https://developer.dji.com/mobile-sdk/documentation/application-development-workflow/workflow-run.html#connect-mobile-device-and-run-application) guide to run the application and view the live video stream from your DJI product's camera.
+### Implement the WhiteBalanceTemperature Delegate
+
+This class is used to display and change custom white balance temperature, using `MainCamera` and `camera2.MainCamera` peripherals (respectively Camera1 API and Camera2 API). A dropdown menu is used to change the temperature.
+
+In the project navigator, go to **app -> java -> com -> parrot -> camera**, and right-click on the camera directory. Select **New -> Kotlin Class/File** to create a new kotlin class and name it as `WhiteBalanceTemperature.kt`.
+
+Begin by making class variables for each of the camera peripherals along with listeners for the camera mode radio button:
+
+```kotlin
+class WhiteBalanceTemperature(
+    /** Custom white balance temperature spinner. */
+    private val whiteBalanceSpinner: Spinner
+) {
+    /** Reference to `MainCamera` peripheral. */
+    private var mainCameraRef: Ref<MainCamera>? = null
+
+    /** Reference to `camera2.MainCamera` peripheral. */
+    private var mainCamera2Ref: Ref<com.parrot.drone.groundsdk.device.peripheral.camera2.MainCamera>? =
+        null
+}
+```
+
+Next, create a listener for the dropdown to set the white balance temperature to the camera:
+
+```kotlin
+    /** Listener for custom white balance spinner. */
+    private val whiteBalanceSpinnerListener = object : AdapterView.OnItemSelectedListener {
+
+        override fun onItemSelected(parent: AdapterView<*>, view: View?, pos: Int, id: Long) {
+            // Get `MainCamera` peripheral from its reference, if available.
+            mainCameraRef?.get()?.let { camera ->
+                // Get white balance temperature selected by user.
+                val selectedWhiteBalanceTemperature = parent.getItemAtPosition(pos) as CameraWhiteBalance.Temperature
+                // Set white balance temperature.
+                setWhiteBalanceTemperatureCamera1(camera, selectedWhiteBalanceTemperature)
+            } ?:
+
+            // Otherwise, get `camera2.MainCamera` peripheral from its reference, if available.
+            mainCamera2Ref?.get()?.let { camera ->
+                // Get white balance temperature selected by user.
+                val selectedWhiteBalanceTemperature = parent.getItemAtPosition(pos) as Camera.WhiteBalanceTemperature
+                // Set white balance temperature.
+                setWhiteBalanceTemperatureCamera2(camera, selectedWhiteBalanceTemperature)
+            }
+        }
+
+        override fun onNothingSelected(parent: AdapterView<*>?) {
+        }
+    }
+```
+
+After, create setters for each camera:
+
+```kotlin
+    /**
+     * Sets custom white balance temperature with `MainCamera` peripheral (Camera1 API).
+     *
+     * @param camera camera peripheral
+     * @param temperature new custom white balance temperature
+     */
+    private fun setWhiteBalanceTemperatureCamera1(camera: MainCamera,
+                                                  temperature: CameraWhiteBalance.Temperature) {
+        // Get white balance setting and set mode to `custom`, to allow definition of a custom temperature.
+        // This will send immediately this mode to the drone, if connected.
+        camera.whiteBalance().setMode(CameraWhiteBalance.Mode.CUSTOM)
+        // Get white balance setting and set the custom temperature.
+        // This will send immediately this value to the drone, if connected.
+        camera.whiteBalance().setCustomTemperature(temperature)
+    }
+
+    /**
+     * Sets custom white balance temperature with `camera2.MainCamera` peripheral (Camera2 API).
+     *
+     * @param camera camera peripheral
+     * @param temperature new custom white balance temperature
+     */
+    private fun setWhiteBalanceTemperatureCamera2(camera: Camera,
+                                                  temperature: Camera.WhiteBalanceTemperature) {
+        // To change custom white balance temperature with `camera2.MainCamera` peripheral,
+        // we use the configuration editor.
+        // Create a configuration editor, starting from current configuration.
+        val editor = camera.config.edit(fromScratch = false)
+        // Set white balance mode to `custom`, to allow definition of a custom temperature.
+        // And set the custom white balance temperature.
+        // Note: In case of conflicts with other parameters, the editor may automatically unset the
+        // other conflicting parameters, so that the configuration remains consistent.
+        editor[Camera.Config.WHITE_BALANCE_MODE].value = Camera.WhiteBalanceMode.CUSTOM
+        editor[Camera.Config.WHITE_BALANCE_TEMPERATURE].value = temperature
+        // Automatically complete the edited configuration, to ensure that all parameters are set.
+        editor.autoComplete()
+        // Apply and send the new configuration to the drone, if the drone is connected.
+        editor.commit()
+    }
+```
+
+Create update methods to update the dropdown:
+
+```kotlin
+    /**
+     * Updates custom white balance temperature display with `MainCamera` peripheral (Camera1 API).
+     *
+     * @param camera camera peripheral
+     */
+    private fun updateViewCamera1(camera: MainCamera) {
+        // Get the set of supported white balance temperatures.
+        val supportedWhiteBalanceTemperatures = camera.whiteBalance().supportedCustomTemperatures()
+        // Get the current custom white balance temperature.
+        val whiteBalanceTemperature = camera.whiteBalance().customTemperature()
+        // Create adapter for white balance temperatures choice.
+        val adapter = ArrayAdapter<CameraWhiteBalance.Temperature>(whiteBalanceSpinner.context, android.R.layout.simple_spinner_item)
+        // Fill adapter with supported white balance temperatures.
+        adapter.addAll(supportedWhiteBalanceTemperatures)
+        // Enable spinner if white balance is not currently changing.
+        whiteBalanceSpinner.isEnabled = !camera.whiteBalance().isUpdating
+        // Set spinner adapter.
+        whiteBalanceSpinner.adapter = adapter
+        // Tell to spinner the current white balance temperature.
+        whiteBalanceSpinner.setSelection(adapter.getPosition(whiteBalanceTemperature))
+        // Register spinner listener.
+        whiteBalanceSpinner.onItemSelectedListener = whiteBalanceSpinnerListener
+    }
+
+    /**
+     * Updates custom white balance temperature display with `camera2.MainCamera` peripheral (Camera2 API).
+     *
+     * @param camera camera peripheral
+     */
+    private fun updateViewCamera2(camera: Camera) {
+        // Get configuration parameter for white balance temperature.
+        val whiteBalanceTemperatureParam = camera.config[Camera.Config.WHITE_BALANCE_TEMPERATURE]
+        // Get the set of supported white balance temperatures.
+        val supportedWhiteBalanceTemperatures = whiteBalanceTemperatureParam.supportedValues(onlyCurrent = false)
+        // Get the current custom white balance temperature.
+        val whiteBalanceTemperature = whiteBalanceTemperatureParam.value
+        // Create adapter for white balance temperatures choice.
+        val adapter = ArrayAdapter<Camera.WhiteBalanceTemperature>(whiteBalanceSpinner.context, android.R.layout.simple_spinner_item)
+        // Fill adapter with supported white balance temperatures.
+        adapter.addAll(supportedWhiteBalanceTemperatures)
+        // Enable spinner if white balance is not currently changing.
+        whiteBalanceSpinner.isEnabled = !camera.config.updating
+        // Set spinner adapter.
+        whiteBalanceSpinner.adapter = adapter
+        // Tell to spinner the current white balance temperature.
+        whiteBalanceSpinner.setSelection(adapter.getPosition(whiteBalanceTemperature))
+        // Register spinner listener.
+        whiteBalanceSpinner.onItemSelectedListener = whiteBalanceSpinnerListener
+    }
+```
+
+Finally, create camera monitor and reset methods to allow this delegate to update the white balance temperature:
+
+```kotlin
+    /**
+     * Starts camera peripherals monitoring.
+     *
+     * @param drone drone to monitor
+     */
+    fun startMonitoring(drone: Drone) {
+        // Drones: ANAFI_4K, ANAFI_THERMAL, ANAFI_USA
+        // Monitor `MainCamera` peripheral, for drones supporting Camera1 API.
+        // We keep camera reference as a class property, otherwise change notifications would stop.
+        mainCameraRef = drone.getPeripheral(MainCamera::class.java) { camera ->
+            // Called when the camera changes, on main thread.
+            camera?.let {
+                updateViewCamera1(camera)
+            } ?: run {
+                resetView()
+            }
+        }
+
+        // Drones: ANAFI_2
+        // Monitor `camera2.MainCamera` peripheral, for drones supporting Camera2 API.
+        // We keep camera reference as a class property, otherwise change notifications would stop.
+        mainCamera2Ref = drone.getPeripheral(com.parrot.drone.groundsdk.device.peripheral.camera2.MainCamera::class.java) { camera ->
+            // Called when the camera changes, on main thread.
+            camera?.let {
+                updateViewCamera2(camera)
+            } ?: run {
+                resetView()
+            }
+        }
+    }
+
+    /**
+     * Stops camera peripherals monitoring.
+     */
+    fun stopMonitoring() {
+        // Release `MainCamera` peripheral reference.
+        mainCameraRef?.close()
+        mainCameraRef = null
+
+        // Release `camera2.MainCamera` peripheral reference.
+        mainCamera2Ref?.close()
+        mainCamera2Ref = null
+
+        resetView()
+    }
+
+    /**
+     * Resets custom white balance temperature display.
+     */
+    private fun resetView() {
+        whiteBalanceSpinner.isEnabled = false
+        whiteBalanceSpinner.adapter = null
+    }
+```
 
 ---
 ### App Screenshots
+<p align="center">
+   <img src="./images/final_app.jpg" width="60%" height="60%">
+</p>
 
-#### Connection Activity
-*    Disconnected:
-     <img src="https://user-images.githubusercontent.com/33791954/154558715-200dc0b1-f8bb-483b-a07a-f40fae1d96a5.jpg" alt="drawing" width="30%" height="30%"/>
-
-*    Connected:
-     <img src="https://user-images.githubusercontent.com/33791954/154558814-60241803-2ef1-4dd0-b03e-3581bab67bb4.jpg" alt="drawing" width="30%" height="30%"/>
-
-#### Main Activity (FPV Screen)
-*    Normal:
-     <img src="https://github.com/riisinterns/drone-lab-three-camera-demo/blob/main/images/screenshot_20220301-230002_djifpv-kotlin.jpg" alt="drawing" width="60%" height="60%"/>
-
-*    Switching Camera Mode:
-     <img src="https://github.com/riisinterns/drone-lab-three-camera-demo/blob/main/images/screenshot_20220301-230011_djifpv-kotlin.jpg" alt="drawing" width="60%" height="60%"/>
-
-*    Capturing Photo:
-     <img src="https://github.com/riisinterns/drone-lab-three-camera-demo/blob/main/images/screenshot_20220301-230021_djifpv-kotlin.jpg" alt="drawing" width="60%" height="60%"/>
-
-*    Video Recording Started:
-     <img src="https://github.com/riisinterns/drone-lab-three-camera-demo/blob/main/images/screenshot_20220301-230040_djifpv-kotlin.jpg" alt="drawing" width="60%" height="60%"/>
-
-*    Video Recording in Progress:
-     <img src="https://github.com/riisinterns/drone-lab-three-camera-demo/blob/main/images/screenshot_20220301-230046_djifpv-kotlin.jpg" alt="drawing" width="60%" height="60%"/>
-
-*    Video Recording Stopped:
-     <img src="https://github.com/riisinterns/drone-lab-three-camera-demo/blob/main/images/screenshot_20220301-230118_djifpv-kotlin.jpg" alt="drawing" width="60%" height="60%"/>
 
 ---
 ### Summary
 
-In this tutorial, you have learned how to use **MediaManager** to preview photos, play videos, download or delete files, you also learn how to get and show the video playback status info. By using the **MediaManager**, the users can get the metadata for all the multimedia files, and has access to each individual multimedia file. Hope you enjoy it!
+From this tutorial, you have gotten a basic understanding of the Parrot Ground Sdk. We implemented the FPV view and two basic camera functionalities: Take Photo and Record video. As well, we were able to change the white balance temperature of the camera. Thank you for following this!
 
 ---
 ### License

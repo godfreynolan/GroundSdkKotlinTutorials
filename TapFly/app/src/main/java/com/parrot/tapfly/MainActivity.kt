@@ -2,6 +2,7 @@ package com.parrot.tapfly
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import com.parrot.drone.groundsdk.GroundSdk
@@ -14,12 +15,17 @@ import com.parrot.drone.groundsdk.device.instrument.BatteryInfo
 import com.parrot.drone.groundsdk.device.peripheral.StreamServer
 import com.parrot.drone.groundsdk.device.peripheral.stream.CameraLive
 import com.parrot.drone.groundsdk.device.pilotingitf.Activable
+import com.parrot.drone.groundsdk.device.pilotingitf.FollowMePilotingItf
 import com.parrot.drone.groundsdk.device.pilotingitf.ManualCopterPilotingItf
+import com.parrot.drone.groundsdk.device.pilotingitf.tracking.TrackingIssue
 import com.parrot.drone.groundsdk.facility.AutoConnection
 import com.parrot.drone.groundsdk.stream.GsdkStreamView
+import com.parrot.drone.groundsdk.value.EnumSetting
+import java.util.*
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), FollowMePilotingItf {
 
+    private val TAG = "MainActivity"
 
     private lateinit var groundSdk: GroundSdk
 
@@ -281,5 +287,46 @@ class MainActivity : AppCompatActivity() {
                 rcBatteryTxt.text = getString(R.string.percentage, it.batteryLevel)
             }
         }
+    }
+
+    override fun getState(): Activable.State {
+        Log.d(TAG, "...")
+    }
+
+    override fun deactivate(): Boolean {
+        Log.d(TAG, "...")
+
+    }
+
+    override fun mode(): EnumSetting<FollowMePilotingItf.Mode> {
+        Log.d(TAG, "...")
+    }
+
+    override fun activate(): Boolean {
+        Log.d(TAG, "...")
+    }
+
+    override fun getCurrentBehavior(): FollowMePilotingItf.Behavior {
+        Log.d(TAG, "...")
+    }
+
+    override fun getAvailabilityIssues(): EnumSet<TrackingIssue> {
+        Log.d(TAG, "...")
+    }
+
+    override fun getQualityIssues(): EnumSet<TrackingIssue> {
+        Log.d(TAG, "...")
+    }
+
+    override fun setPitch(pitch: Int) {
+        Log.d(TAG, "...")
+    }
+
+    override fun setRoll(roll: Int) {
+        Log.d(TAG, "...")
+    }
+
+    override fun setVerticalSpeed(verticalSpeed: Int) {
+        Log.d(TAG, "...")
     }
 }
