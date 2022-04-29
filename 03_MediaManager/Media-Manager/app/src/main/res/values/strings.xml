@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">MediaManager</string>
+    <string name="percentage">%1$d %%</string>
+    <string name="download_all">Download All</string>
+    <string name="delete_all">Delete All</string>
+    <string name="no_media_prompt">There is currently no media available on the drone\'s SD card</string>
+    <string name="download_media">Download Media</string>
+    <string name="view_media">View Media</string>
+    <string name="delete_media">Delete Media</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="stop">Stop</string>
+</resources>
