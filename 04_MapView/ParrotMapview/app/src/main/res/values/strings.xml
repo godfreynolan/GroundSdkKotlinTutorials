@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Parrot Mapview</string>
+    <string name="drone">Drone</string>
+    <string name="state">state</string>
+    <string name="take_off">take off</string>
+    <string name="land">land</string>
+</resources>
