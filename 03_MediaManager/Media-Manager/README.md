@@ -1575,7 +1575,7 @@ This resource is used by the `navController` in **MainActivity** for identifying
 
 ---
 ## Demo
- ![My Image](03_MediaManager/Media-Manager/Parrot Media Manager GIF Demo.gif)
+ ![My Image](../03_MediaManager/Media-Manager/Parrot Media Manager GIF Demo.gif)
 
 
 
